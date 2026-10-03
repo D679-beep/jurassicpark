@@ -9,6 +9,7 @@ npm install
 npm run dev      # start the dev server
 npm test         # run the unit tests
 npm run build    # typecheck and build to dist/
+npm run smoke    # build, then play a turn in headless Chromium (Playwright) and save screenshots
 ```
 
 ## Docs
