@@ -1,13 +1,15 @@
 # The Lantern Crown — Game Plan (v0.1)
 
-*Companion to `docs/story.md` (story draft v0.2). This plan covers what kind of game to make, how each system works, how the story is told through play, what it looks and sounds like, and how to build it. New names introduced here are placeholders.*
+*Companion to `docs/story.md` (story draft v0.2). This plan covers what kind of game to make, how each system works, how the story is told through play, what it looks like, and how to build it. New names introduced here are placeholders.*
 
 **Decisions so far**
 - Plan approved.
 - **Scope: Tier 1, "The Night"** (§12.4). The game covers the festival and coup night from both sides, plus a short epilogue for each outcome. The war table, Acts I–III, and the true ending are out of scope for now and remain in this document for reference.
 - **Art style: stylized 3D** (§10.1). HD-2D was rejected.
 - **Engine: TypeScript + Three.js**, running in the browser (§12.1). This replaces the earlier Godot recommendation.
-- **Who builds it:** Claude writes all code, shaders, effects, and text. The project owner supplies third-party resources such as models, music, and optional portrait art (§12.6).
+- **Who builds it:** Claude builds everything: code, shaders, effects, text, and **every visual asset, generated from code** (§12.6). Nothing needs to be downloaded or supplied.
+- **Characters are painted tabletop miniatures:** figurines on bases, built from code (§10.1).
+- **No sound.** The game is silent. Everything audio would have communicated is shown visually (§11).
 
 ---
 
@@ -85,7 +87,7 @@ At midnight the camera pulls up to a top-down **Night Map** of Calderon's inner 
 **The Bell Clock**
 - A real-time-to-turn conversion: **one tactical turn = 3 minutes of night.** Moving between adjacent districts costs 10–20 minutes.
 - Midnight to dawn is 6 hours, about 120 turns in all. A player fits in **4–6 battles**, and cannot do everything. That scarcity is the design.
-- A large diegetic bell tower sits in the corner of the screen. Its shadow moves. A soft chime sounds every quarter hour, and a full toll plays at each Bell.
+- A large diegetic bell tower sits in the corner of the screen. Its shadow moves. Every quarter hour the bell icon pulses. At each Bell the bell visibly swings, and a ring of light ripples across the whole map.
 - **Off-screen fronts:** other squads (the Ashen Wolves' companies, City Watch detachments) are tokens fighting their own simulated battles. Districts change hands while you are elsewhere, so you have to keep looking back at the map.
 
 **Commanding Ascendants on the Night Map.** Once per Bell the player gives a **directive** to their side's free Ascendant:
@@ -164,13 +166,13 @@ The skill bar grows over the campaign, so the game gets mechanically bigger as t
 ### 5.7 Domains
 A Domain is a once-per-battle ultimate that **changes the map for 3 turns**, then leaves its Ascendant **Exhausted** on the war table for 1–2 seasons.
 
-| Domain | Owner | Map effect | Visual and audio |
+| Domain | Owner | Map effect | Visual |
 |---|---|---|---|
-| **Sanctuary** | Elian | Allies regenerate each turn; enemy damage is halved; nobody can die inside it, enemies included | A golden dome, falling motes of light, a choir chord held throughout |
-| **Bulwark** | Orsa | Stone walls rise on chosen lines and nothing can pass them; allies inside have doubled defence | The ground heaves, the camera shakes, low drums |
-| **Tempest** | Varek | Random lightning on telegraphed tiles; wind pushes every unit 1 tile each turn; ranged attacks are disabled | The screen goes violet-white with rain streaks and distorted thunder |
+| **Sanctuary** | Elian | Allies regenerate each turn; enemy damage is halved; nobody can die inside it, enemies included | A golden dome, falling motes of light, a soft halo around every ally |
+| **Bulwark** | Orsa | Stone walls rise on chosen lines and nothing can pass them; allies inside have doubled defence | The ground heaves, the camera shakes, dust rolls off the walls |
+| **Tempest** | Varek | Random lightning on telegraphed tiles; wind pushes every unit 1 tile each turn; ranged attacks are disabled | The screen goes violet-white with rain streaks and white lightning flashes that briefly overexpose the screen |
 | **Pyre** | Grimm | Every turn fire spreads 2 tiles from Grimm; buildings collapse | Orange glow over everything, ash falling, a heat-haze shader |
-| **Silence** | Sereth | **All mana abilities are disabled in a large radius**: no skills, no Domains, no combos | **The screen drains to greyscale, the music stops, and the UI skill bar visibly greys out.** The player feels the Domain as much as they see it. |
+| **Silence** | Sereth | **All mana abilities are disabled in a large radius**: no skills, no Domains, no combos | **The screen drains to greyscale, all particle effects and lantern flicker freeze, and the UI skill bar visibly greys out.** The world seems to stop breathing. |
 
 **Domain Clash.** When two Domains overlap, the battle pauses and a short **Clash** begins: three rounds in which each Ascendant chooses *Press*, *Hold*, or *Yield*, and each choice is coloured by their Vow. The winner's Domain covers the overlap. This is where brother fights brother in the Wellspring Hall.
 
@@ -263,7 +265,7 @@ A final battle that unlocks only after both campaigns. **Aren and Kaela fight on
 ### 8.2 Narrative systems
 | System | What it is | Why it matters |
 |---|---|---|
-| **Moral tracks** | Mercy ↔ Resolve (Loyalist), Honor ↔ Iron (Rebel). Never shown as a number. Shown by how characters greet you, which camp music plays, and the colour of your banner. | Choices feel lived-in rather than scored. |
+| **Moral tracks** | Mercy ↔ Resolve (Loyalist), Honor ↔ Iron (Rebel). Never shown as a number. Shown by how characters greet you, the colour of your banner, and how lit the camp is. | Choices feel lived-in rather than scored. |
 | **The Ledger** | Every named character who dies, including festival NPCs and spared enemies who come back, gets a line in a book you can open at camp. Varek reads his own Ledger in Act II. | The war's cost stays personal. |
 | **Bonds** | Camp conversations with 8–10 companions per side, with 3 levels each. Max bonds unlock combo attacks and a personal epilogue. | The companionship that makes tactics RPGs memorable. |
 | **Letters** | Between chapters, letters arrive from family, enemies, and Mira. Some are intercepted letters meant for the other side. | Shows the world from outside the front line. |
@@ -315,10 +317,11 @@ Echoes are presented as **memory, not power-ups**, which fits the theme: underst
 ### 10.1 Overall look: "Lantern-lit dioramas"
 **Decided: stylized 3D.**
 - **Style:** stylized low-poly 3D environments viewed through a **tilt-shift tactical camera**. The battlefield should look like a lit miniature set on a table.
-- **Where the look comes from:** most of the visual identity comes from code: lighting, a toon/painterly shader, outlines, a strict palette per faction, fog, and post-processing. Models come from **one CC0 asset family with a shared skeleton and animation library** (§12.6). Claude recolours, combines, and re-dresses them into named characters and factions.
-- **Characters:** stylized 3D models (chunky proportions, readable at a distance). Each named character gets a distinct silhouette from accessories, colour, and props.
-- **Portraits:** the baseline is **in-engine 3D close-ups** rendered with a painterly shader. Supplied portrait art can replace them later without code changes.
-- **Why not HD-2D:** HD-2D needs roughly 2,000 hand-drawn sprite frames plus lighting maps. That is the one thing this project cannot produce. 3D also gives native dynamic lighting for the darkness/lantern/dawn mechanics, and shared animations across every character.
+- **Where the look comes from:** most of the visual identity comes from code: lighting, a toon/painterly shader, outlines, a strict palette per faction, fog, and post-processing. There are no imported models: every character, building, and prop is **generated from code** (§12.6).
+- **Characters: painted tabletop miniatures.** Each unit is a figurine on a round base, built from code out of simple shapes and painted in its faction's palette. Named characters are told apart by silhouette and props: Varek's storm cloak, Orsa's tower shield, Elian's halo-crest helm, Mira's lantern, Kaela's wolf pelt, Grimm's brazier-pauldron. Figurines **slide, hop, tilt, and topple** like game pieces instead of using skeletal animation. A downed unit tips onto its side; a subdued one is laid flat.
+- **Portraits:** in-engine close-up renders of each figurine, framed like a painted miniature on a display stand.
+- **Why not HD-2D:** HD-2D needs roughly 2,000 hand-drawn sprite frames plus lighting maps, which this project cannot produce. 3D also gives native dynamic lighting for the darkness/lantern/dawn mechanics.
+- **Why miniatures:** they fit the "lit miniature set" direction, keep one consistent style with no outside assets, and need no character animation.
 
 ### 10.2 Visual language
 | Element | Loyalists | Rebels |
@@ -348,7 +351,7 @@ Echoes are presented as **memory, not power-ups**, which fits the theme: underst
 2. **Tempest over the palace**: the sky splits, and rain and lightning engulf the dome.
 3. **Pyre vs Bulwark in the Feast Hall**: fire roaring against rising stone walls while you fight between them.
 4. **Dawn arrives**: real-time light sweeps across the Night Map, district by district.
-5. **The Silence reveal**: colour drains, the music cuts, and Sereth is the only thing in colour.
+5. **The Silence reveal**: colour drains, every flame freezes mid-flicker, and Sereth is the only thing in colour.
 6. **Ascension**: the Vow sentence writes itself in light around the character, word by word, assembled from the player's choices.
 7. **The Third Lantern**: Aren and Kaela, each holding a lantern, light the third together.
 
@@ -361,13 +364,13 @@ Echoes are presented as **memory, not power-ups**, which fits the theme: underst
 
 ---
 
-## 11. Audio Direction
+## 11. Audio: none (decided)
 
-- **Bells are the game's leitmotif.** Every Bell on coup night has its own tolling pattern. The same bells return in the finale.
-- **Character themes:** the Emperor's lullaby, which Varek hums once in Act II; Elian's choir; Varek's storm strings; Kaela's frontier fiddle; Aren's simple flute. Mirror scenes reuse the opponent's theme in a minor or major key.
-- **Silence is a designed sound:** under Sereth's Domain all music and mana sound effects stop, leaving only footsteps and breathing.
-- **Adaptive music:** layers add or drop with time pressure, Nerve, and Domain activations.
-- **Voice:** full voice for key cutscenes; barks plus short voiced lines in battle; the rest text-only. This keeps cost manageable.
+The game has **no sound**: no music, effects, or voice. Information that audio would normally carry is shown visually instead:
+- **Bells:** the bell tower swings and a ring of light ripples across the map (§4.2). A short on-screen banner names the Bell.
+- **Threats and hits:** screen shake, hit flashes, damage numbers, and enemy intent markers.
+- **Domains:** each has a distinct full-screen visual treatment (§5.7).
+- **Story beats:** text, camera moves, lighting changes, and title cards.
 
 ---
 
@@ -381,8 +384,7 @@ Echoes are presented as **memory, not power-ups**, which fits the theme: underst
 | Grid and pathfinding | Custom tile grid + A* in TypeScript | Height, light level, terrain type, and fire state stored per tile. |
 | Data | Typed TypeScript/JSON data files for units, skills, districts, Domains | Numbers can be tuned without touching logic. |
 | Lighting | A **per-tile light map** (a data texture sampled by a custom shader), plus a small pool of real dynamic lights near the action | Three.js gets expensive with dozens of real point lights. The per-tile light map also *is* the Lit/Dim/Dark game state, so visuals and rules cannot disagree. |
-| Models and animation | glTF/GLB from one CC0 asset family, loaded with `GLTFLoader`, animated with `AnimationMixer` | Shared skeleton, so every animation works on every character. |
-| Audio | Web Audio API: supplied music tracks + synthesized/supplied sound effects, layered for adaptive music | No extra middleware. |
+| Models and animation | Procedural geometry built in TypeScript (figurines, buildings, props), animated with simple tweens (slide, hop, tilt, topple) | No downloads, one consistent style, no character rigs needed. |
 | Testing | Vitest for rules and logic; Playwright for screenshots and scripted play-tests | Every change can be checked without a human. |
 | Version control | Git; Git LFS only if assets grow past ~100 MB | Already in use. |
 
@@ -407,12 +409,13 @@ src/
     AI.ts              # utility-scoring AI (objective-aware)
     DuelSystem.ts      # Blade Reading 1v1
   render/
-    Scene.ts, Camera.ts, LightMap.ts, Materials.ts, PostFX.ts, Characters.ts
+    Scene.ts, Camera.ts, LightMap.ts, Materials.ts, PostFX.ts
+    figurines/         # code-built miniatures per unit type and named character
+    city/              # code-built buildings, bridges, stalls, lantern posts
   ui/                  # HTML/CSS overlay: bell clock, intents, dialogue
   data/                # units, districts, skills (typed data)
   debug/
     BranchJumper.ts    # jump to any outcome/flag state
-assets/                # supplied third-party resources + CREDITS.md
 story/                 # .ink scripts
 tests/                 # vitest + playwright
 ```
@@ -442,23 +445,19 @@ Estimates assume a **small team of 4–6** (1 designer/lead, 2 programmers, 1–
 ### 12.5 Build order for Tier 1 (decided scope)
 1. **Graybox Princess's Tower battle** with placeholder shapes: grid, movement, attacks, light/dark tiles, subdue/kill, enemy intents.
 2. **Bell Clock + Night Map** connecting several districts, with off-screen fronts.
-3. **Art pass on the Tower** with the supplied assets, lighting, shaders, and post-processing. This is the art target.
+3. **Art pass on the Tower:** code-built figurines and architecture, lighting, shaders, and post-processing. This is the art target.
 4. **Rebel side of coup night** complete (vertical slice).
 5. **Loyalist side**, festival hub, dialogue, outcome epilogues.
-6. Polish, accessibility ("Bells wait for you"), audio, packaging.
+6. Polish, accessibility ("Bells wait for you"), packaging.
 
-### 12.6 Resources to be supplied
-The cloud work environment's network policy blocks the asset hosts (itch.io, quaternius.com, kenney.nl, opengameart.org, freesound.org, polyhaven.com). These resources must be committed to `assets/` (or uploaded to a session), or those hosts must be allowed in the environment's network settings.
+### 12.6 Assets: all generated from code (decided)
+Nothing is downloaded or supplied. Every visual asset is built in code:
+- **Figurines** for each unit type and named character (§10.1).
+- **Architecture:** towers, halls, walls, bridges, canals, market stalls, lantern posts, all assembled from code-generated pieces in the faction palettes.
+- **Effects:** fire, lightning, rain, motes of light, and Domain overlays built from particles and shaders.
+- **UI:** HTML/CSS with fonts installed through npm.
 
-| Priority | Resource | Suggested source (all CC0 unless noted) | Files needed |
-|---|---|---|---|
-| 1 | Characters with a shared skeleton + animations | **KayKit Adventurers** + **KayKit Skeletons** (kaylousberg.itch.io), *or* **Quaternius Ultimate Modular Characters** + **Universal Animation Library** (quaternius.com). Pick **one** family. | The `.glb`/`.gltf` files and their textures, plus the license file |
-| 2 | Medieval town/castle environment kit, same family as #1 | **KayKit Dungeon Remastered** or **KayKit Medieval Builder**; or **Quaternius Medieval Village / Fantasy Props**; or **Kenney Castle Kit** | `.glb`/`.gltf` + textures + license |
-| 3 | Music | 3–5 CC0 or royalty-free orchestral/ambient tracks (a calm festival piece, a tense night loop, a dawn piece) | `.ogg` or `.mp3` + license |
-| 3 | Bell and ambient sounds | CC0 church/temple bell recordings and night ambience (Freesound, filtered to CC0) | `.ogg`/`.wav` + license |
-| 4 (optional) | Portraits for the 8 named characters; one key-art image | Commissioned or generated, owned by the project | `.png` |
-
-Every supplied resource gets an entry in `assets/CREDITS.md` with its source and license.
+The only external dependencies are npm packages (Three.js, Vite, inkjs, Vitest, Playwright), which install normally in the work environment.
 
 ### 12.7 Keeping content costs down
 - **Map reuse through mirroring:** each major map (Tower, Feast Hall, Walls, Wellspring) is used in both campaigns with different lighting, damage state, and objectives. That gives about 40% map savings.
@@ -483,8 +482,7 @@ Every supplied resource gets an entry in `assets/CREDITS.md` with its source and
 
 ## 14. Immediate Next Steps
 
-1. ~~Decide the scope tier and art style.~~ Done: Tier 1, stylized 3D, TypeScript + Three.js.
-2. **Supply the resources** in §12.6 (at least priority 1 and 2) by committing them to `assets/`. Construction does not wait on this: step 3 uses placeholder shapes.
-3. **Set up the TypeScript + Three.js project** with the structure in §12.2, and build the graybox Princess's Tower battle (§12.5, step 1).
-4. **Write a beat sheet for the canonical path of coup night** from both sides, listing every mirror scene.
-5. Optional: a **paper prototype of coup night** (§4.2) with a printed city map, tokens, and a timer, to test the Bell Clock by hand.
+1. ~~Decide the scope tier, art style, and asset approach.~~ Done: Tier 1, stylized 3D miniatures built from code, TypeScript + Three.js, no sound.
+2. **Set up the TypeScript + Three.js project** with the structure in §12.2, and build the graybox Princess's Tower battle (§12.5, step 1).
+3. **Write a beat sheet for the canonical path of coup night** from both sides, listing every mirror scene.
+4. Optional: a **paper prototype of coup night** (§4.2) with a printed city map, tokens, and a timer, to test the Bell Clock by hand.
