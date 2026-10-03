@@ -2,6 +2,11 @@
 
 *Companion to `docs/story.md` (story draft v0.2). This plan covers what kind of game to make, how each system works, how the story is told through play, what it looks and sounds like, and how to build it. New names introduced here are placeholders.*
 
+**Decisions so far**
+- Plan approved.
+- **Scope: Tier 1, "The Night"** (§12.4). The game covers the festival and coup night from both sides, plus a short epilogue for each outcome. The war table, Acts I–III, and the true ending are out of scope for now and remain in this document for reference.
+- Art style (§10.1): not yet decided.
+
 ---
 
 ## 1. The Pitch in One Paragraph
