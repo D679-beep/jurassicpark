@@ -5,7 +5,9 @@
 **Decisions so far**
 - Plan approved.
 - **Scope: Tier 1, "The Night"** (§12.4). The game covers the festival and coup night from both sides, plus a short epilogue for each outcome. The war table, Acts I–III, and the true ending are out of scope for now and remain in this document for reference.
-- Art style (§10.1): not yet decided.
+- **Art style: stylized 3D** (§10.1). HD-2D was rejected.
+- **Engine: TypeScript + Three.js**, running in the browser (§12.1). This replaces the earlier Godot recommendation.
+- **Who builds it:** Claude writes all code, shaders, effects, and text. The project owner supplies third-party resources such as models, music, and optional portrait art (§12.6).
 
 ---
 
@@ -311,10 +313,12 @@ Echoes are presented as **memory, not power-ups**, which fits the theme: underst
 ## 10. Art Direction and Graphics
 
 ### 10.1 Overall look: "Lantern-lit dioramas"
-- **Recommended style:** stylized 3D environments with **hand-painted textures**, viewed through a **tilt-shift tactical camera**. The battlefield should look like a lit miniature set on a table.
-- **Characters:** stylized 3D models (about 1:5 head-to-body, readable at a distance) for battles. **Hand-painted 2D portraits** with 4–6 expressions each for dialogue. **Full illustrated CGs** for about 20 key moments.
-- **Why 3D rather than pixel art:** the core mechanics (darkness, lanterns, dawn sweeping across the map, Domains reshaping terrain) all depend on **dynamic lighting**. Stylized 3D does this cheaply and well, and animation is far cheaper than hand-drawn sprites with many directions.
-- **Alternative (if the team has a strong pixel artist):** HD-2D, meaning pixel-art sprites in 3D dioramas with modern lighting, in the style of *Triangle Strategy* or *Octopath Traveler*. It looks beautiful and fits tactics, but sprite animation for many unit types costs more.
+**Decided: stylized 3D.**
+- **Style:** stylized low-poly 3D environments viewed through a **tilt-shift tactical camera**. The battlefield should look like a lit miniature set on a table.
+- **Where the look comes from:** most of the visual identity comes from code: lighting, a toon/painterly shader, outlines, a strict palette per faction, fog, and post-processing. Models come from **one CC0 asset family with a shared skeleton and animation library** (§12.6). Claude recolours, combines, and re-dresses them into named characters and factions.
+- **Characters:** stylized 3D models (chunky proportions, readable at a distance). Each named character gets a distinct silhouette from accessories, colour, and props.
+- **Portraits:** the baseline is **in-engine 3D close-ups** rendered with a painterly shader. Supplied portrait art can replace them later without code changes.
+- **Why not HD-2D:** HD-2D needs roughly 2,000 hand-drawn sprite frames plus lighting maps. That is the one thing this project cannot produce. 3D also gives native dynamic lighting for the darkness/lantern/dawn mechanics, and shared animations across every character.
 
 ### 10.2 Visual language
 | Element | Loyalists | Rebels |
@@ -369,41 +373,48 @@ Echoes are presented as **memory, not power-ups**, which fits the theme: underst
 
 ## 12. How It Gets Made
 
-### 12.1 Engine and tools (recommended)
+### 12.1 Engine and tools (decided)
 | Need | Choice | Why |
 |---|---|---|
-| Engine | **Godot 4** (GDScript, with C# for heavy simulation if needed) | Free, open source, strong for stylized 3D, no runtime fees. Choose Unity only if the team already knows it well. |
-| Dialogue | **Yarn Spinner for Godot** or **Ink** (via godot-ink) | Writers work in plain text with variables and branches; the game reads the same story flags. |
-| Grid and pathfinding | Godot's `AStarGrid2D`/`AStar3D` plus a custom tile-data layer | Height, light level, terrain type, and fire state stored per tile. |
-| Data | Godot Resources for units, skills, missions, Domains | Designers can tune numbers without writing code. |
-| Art | Blender (models), Substance or hand-painted Krita textures, Krita or Photoshop (portraits) | Standard indie pipeline. |
-| Audio | Reaper plus FMOD or Godot's built-in adaptive bus system | Needed for the music layers. |
-| Version control | Git with Git LFS for art | Already in use. |
+| Engine | **TypeScript + Three.js**, built with **Vite** | Claude builds everything through code. A browser game can be run, screenshotted, and play-tested automatically in the cloud work environment (headless Chromium with WebGL2 was verified there). Nothing to install per session beyond `npm install`. Playable from a link; can be wrapped as a desktop/Steam app later (Electron or Tauri). |
+| Dialogue | **Ink** (`inkjs`) | Plain-text branching scripts with variables, read and written alongside the game's story flags. |
+| Grid and pathfinding | Custom tile grid + A* in TypeScript | Height, light level, terrain type, and fire state stored per tile. |
+| Data | Typed TypeScript/JSON data files for units, skills, districts, Domains | Numbers can be tuned without touching logic. |
+| Lighting | A **per-tile light map** (a data texture sampled by a custom shader), plus a small pool of real dynamic lights near the action | Three.js gets expensive with dozens of real point lights. The per-tile light map also *is* the Lit/Dim/Dark game state, so visuals and rules cannot disagree. |
+| Models and animation | glTF/GLB from one CC0 asset family, loaded with `GLTFLoader`, animated with `AnimationMixer` | Shared skeleton, so every animation works on every character. |
+| Audio | Web Audio API: supplied music tracks + synthesized/supplied sound effects, layered for adaptive music | No extra middleware. |
+| Testing | Vitest for rules and logic; Playwright for screenshots and scripted play-tests | Every change can be checked without a human. |
+| Version control | Git; Git LFS only if assets grow past ~100 MB | Already in use. |
 
 ### 12.2 Code architecture (high level)
 ```
-core/
-  GameState          # flags, moral tracks, Ledger, Spared, Echoes (meta save)
-  SaveSystem         # per-campaign saves + a cross-campaign meta save
-story/
-  DialogueRunner     # Yarn/Ink bridge reading/writing GameState
-  SceneDirector      # cutscene sequencing, role-slot substitution
-night_map/
-  BellClock          # minutes, bell events, delays/hastes
-  DistrictGraph      # nodes, travel costs, ownership
-  FrontSimulator     # auto-resolves off-screen squads
-tactics/
-  Grid, Tile         # height, light, terrain, fire
-  TurnManager        # initiative, phases, clock ticks
-  AbilitySystem      # data-driven skills, combos, Domains
-  IntentSystem       # telegraphs enemy actions
-  AI                 # utility-scoring AI (objective-aware)
-  DuelSystem         # Blade Reading 1v1
-war_table/
-  RegionGraph, Tokens, Resolver, GlobalClocks
-tools/
-  BranchJumper       # debug: jump to any variant/flag state
-  MissionEditor      # in-editor mission authoring
+src/
+  core/
+    GameState.ts       # flags, moral tracks, Ledger, Spared, Echoes (meta save)
+    SaveSystem.ts      # per-run saves + a meta save (localStorage)
+  story/
+    DialogueRunner.ts  # inkjs bridge reading/writing GameState
+    SceneDirector.ts   # cutscene sequencing, camera shots
+  night_map/
+    BellClock.ts       # minutes, bell events, delays/hastes
+    DistrictGraph.ts   # nodes, travel costs, ownership
+    FrontSimulator.ts  # auto-resolves off-screen squads
+  tactics/
+    Grid.ts, Tile.ts   # height, light, terrain, fire
+    TurnManager.ts     # phases, clock ticks
+    AbilitySystem.ts   # data-driven skills, combos, Domains
+    IntentSystem.ts    # telegraphs enemy actions
+    AI.ts              # utility-scoring AI (objective-aware)
+    DuelSystem.ts      # Blade Reading 1v1
+  render/
+    Scene.ts, Camera.ts, LightMap.ts, Materials.ts, PostFX.ts, Characters.ts
+  ui/                  # HTML/CSS overlay: bell clock, intents, dialogue
+  data/                # units, districts, skills (typed data)
+  debug/
+    BranchJumper.ts    # jump to any outcome/flag state
+assets/                # supplied third-party resources + CREDITS.md
+story/                 # .ink scripts
+tests/                 # vitest + playwright
 ```
 
 ### 12.3 Production phases
@@ -428,7 +439,28 @@ Estimates assume a **small team of 4–6** (1 designer/lead, 2 programmers, 1–
 | **2. One Road** | Tier 1 plus **one** full campaign (recommended: Rebel, the more surprising one), the other side as a later expansion | Small team, about 1.5–2 years |
 | **3. Full Crown** | Everything in this document | Small team plus contractors, about 2.5–3 years |
 
-### 12.5 Keeping content costs down
+### 12.5 Build order for Tier 1 (decided scope)
+1. **Graybox Princess's Tower battle** with placeholder shapes: grid, movement, attacks, light/dark tiles, subdue/kill, enemy intents.
+2. **Bell Clock + Night Map** connecting several districts, with off-screen fronts.
+3. **Art pass on the Tower** with the supplied assets, lighting, shaders, and post-processing. This is the art target.
+4. **Rebel side of coup night** complete (vertical slice).
+5. **Loyalist side**, festival hub, dialogue, outcome epilogues.
+6. Polish, accessibility ("Bells wait for you"), audio, packaging.
+
+### 12.6 Resources to be supplied
+The cloud work environment's network policy blocks the asset hosts (itch.io, quaternius.com, kenney.nl, opengameart.org, freesound.org, polyhaven.com). These resources must be committed to `assets/` (or uploaded to a session), or those hosts must be allowed in the environment's network settings.
+
+| Priority | Resource | Suggested source (all CC0 unless noted) | Files needed |
+|---|---|---|---|
+| 1 | Characters with a shared skeleton + animations | **KayKit Adventurers** + **KayKit Skeletons** (kaylousberg.itch.io), *or* **Quaternius Ultimate Modular Characters** + **Universal Animation Library** (quaternius.com). Pick **one** family. | The `.glb`/`.gltf` files and their textures, plus the license file |
+| 2 | Medieval town/castle environment kit, same family as #1 | **KayKit Dungeon Remastered** or **KayKit Medieval Builder**; or **Quaternius Medieval Village / Fantasy Props**; or **Kenney Castle Kit** | `.glb`/`.gltf` + textures + license |
+| 3 | Music | 3–5 CC0 or royalty-free orchestral/ambient tracks (a calm festival piece, a tense night loop, a dawn piece) | `.ogg` or `.mp3` + license |
+| 3 | Bell and ambient sounds | CC0 church/temple bell recordings and night ambience (Freesound, filtered to CC0) | `.ogg`/`.wav` + license |
+| 4 (optional) | Portraits for the 8 named characters; one key-art image | Commissioned or generated, owned by the project | `.png` |
+
+Every supplied resource gets an entry in `assets/CREDITS.md` with its source and license.
+
+### 12.7 Keeping content costs down
 - **Map reuse through mirroring:** each major map (Tower, Feast Hall, Walls, Wellspring) is used in both campaigns with different lighting, damage state, and objectives. That gives about 40% map savings.
 - **Role slots** for branches, as in §8.1, rather than fully separate scenes.
 - **Canonical path first:** build and polish Emperor killed, Elian wounded, Mira imprisoned. Variant lines are added in a later pass, only where they change meaning.
@@ -451,8 +483,8 @@ Estimates assume a **small team of 4–6** (1 designer/lead, 2 programmers, 1–
 
 ## 14. Immediate Next Steps
 
-1. **Decide the scope tier** (§12.4) and the art style (§10.1: stylized 3D or HD-2D).
-2. **Paper-prototype coup night** (§4.2) with a printed city map, tokens, and a kitchen timer. This tests the most important idea for almost no cost.
-3. **Write a beat sheet for the canonical path of coup night** from both sides, listing every mirror scene.
-4. **Set up a Godot 4 project** with the folder structure in §12.2 and a graybox Princess's Tower battle.
-5. **Commission or paint one key-art piece:** the lanterns going dark over Calderon. It becomes the art target, the pitch image, and the store capsule.
+1. ~~Decide the scope tier and art style.~~ Done: Tier 1, stylized 3D, TypeScript + Three.js.
+2. **Supply the resources** in §12.6 (at least priority 1 and 2) by committing them to `assets/`. Construction does not wait on this: step 3 uses placeholder shapes.
+3. **Set up the TypeScript + Three.js project** with the structure in §12.2, and build the graybox Princess's Tower battle (§12.5, step 1).
+4. **Write a beat sheet for the canonical path of coup night** from both sides, listing every mirror scene.
+5. Optional: a **paper prototype of coup night** (§4.2) with a printed city map, tokens, and a timer, to test the Bell Clock by hand.
