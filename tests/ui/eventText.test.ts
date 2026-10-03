@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GameEvent } from '../../src/engine';
-import { describeEvent, outcomeLines } from '../../src/ui/eventText';
-import { humanize, makeNameLookup, objectName, zoneName } from '../../src/ui/names';
+import { ChronicleLog, describeEvent, outcomeLines, repositionText, type LogLine } from '../../src/ui/eventText';
+import { exitName, humanize, makeNameLookup, objectName, zoneName } from '../../src/ui/names';
 import { END, play, uiGame } from './fixture';
 
 const name = makeNameLookup(uiGame());
@@ -126,10 +126,23 @@ describe('names', () => {
     expect(humanize('g-throne-1')).toBe('G Throne 1');
     expect(zoneName('servantsTunnel')).toBe("Servants' Tunnel");
     expect(zoneName('someNewZone')).toBe('Some New Zone');
-    expect(objectName({ id: 'doorThroneMain', kind: 'door' })).toBe('Throne Main door');
-    expect(objectName({ id: 'anchorB', kind: 'anchor' })).toBe('Ward anchor B');
+    expect(objectName({ id: 'doorThroneMain', kind: 'door' })).toBe('Throne Hall main door');
+    expect(objectName({ id: 'doorWellSouth', kind: 'door' })).toBe('Wellspring south door');
+    expect(objectName({ id: 'anchorA', kind: 'anchor' })).toBe('Ward anchor (west)');
+    expect(objectName({ id: 'anchorB', kind: 'anchor' })).toBe('Ward anchor (east)');
+    expect(objectName({ id: 'anchorC', kind: 'anchor' })).toBe('Ward anchor (south)');
+    expect(objectName({ id: 'bridgeCenter', kind: 'bridge' })).toBe('Center bridge');
     expect(objectName({ id: 'bridgeEast', kind: 'bridge' })).toBe('East bridge');
+  });
+
+  it('falls back to id-derived names for unknown objects and prefers an explicit name', () => {
+    expect(objectName({ id: 'doorCellar', kind: 'door' })).toBe('Cellar door');
+    expect(objectName({ id: 'anchorD', kind: 'anchor' })).toBe('Ward anchor D');
+    expect(objectName({ id: 'bridgeNorth', kind: 'bridge' })).toBe('North bridge');
     expect(objectName({ id: 'gate', kind: 'door' })).toBe('Barred door Gate');
+    expect(objectName({ id: 'doorThroneMain', kind: 'door', name: 'The Big Door' })).toBe('The Big Door');
+    expect(exitName('miraExit')).toBe("Mira's escape route");
+    expect(exitName('someExit')).toBe('Some Exit');
   });
 
   it('looks up removed units and falls back for unknown ids', () => {
@@ -139,5 +152,58 @@ describe('names', () => {
     expect(n('watch-1')).toBe('City Watch');
     expect(n('mysteryUnit')).toBe('Mystery Unit');
     expect(n(null)).toBe('Someone');
+  });
+});
+
+describe('chronicle: AI moves', () => {
+  const moved = (unitId: string, x: number): GameEvent => ({ type: 'moved', unitId, from: P, to: { x, y: 5 }, path: [{ x, y: 5 }] });
+
+  it('marks plain AI moves for folding and keeps player moves as lines', () => {
+    const lookup = makeNameLookup(uiGame());
+    expect(lookup.aiFactionOf?.('guard')).toBe('loyalist');
+    expect(lookup.aiFactionOf?.('wolf')).toBeUndefined();
+    expect(lookup.aiFactionOf?.('watch-1')).toBe('loyalist');
+    expect(describeEvent(moved('wolf', 4), lookup)).toEqual({ text: 'Ashen Wolf moves to (4,5).', tone: 'move' });
+    const ai = describeEvent(moved('guard', 4), lookup);
+    expect(ai?.reposition).toEqual({ faction: 'loyalist', unitId: 'guard' });
+    expect(ai?.text).toBe('Loyalists reposition (1 unit).');
+  });
+
+  it('folds many AI moves in a phase into one summary and keeps other events', () => {
+    const lookup = makeNameLookup(uiGame());
+    const log = new ChronicleLog();
+    const entries: LogLine[] = [];
+    const feed = (e: GameEvent): void => {
+      const line = describeEvent(e, lookup);
+      if (!line) return;
+      const r = log.push(line);
+      if (r.isNew) entries.push(r.entry);
+    };
+    feed({ type: 'phaseStarted', round: 1, phase: 'ai', faction: 'loyalist' });
+    feed(moved('guard', 4));
+    feed(moved('watch-1', 5));
+    feed({ type: 'damaged', targetId: 'wolf', targetKind: 'unit', pos: P, amount: 2, hpBefore: 9, hpAfter: 7, sourceId: 'guard', cause: 'attack', roll: null });
+    feed(moved('watch-2', 6));
+    feed(moved('guard', 7)); // same unit again does not inflate the count
+    expect(entries.map((l) => l.text)).toEqual([
+      'Loyalist phase.',
+      'Loyalists reposition (3 units).',
+      'Palace Guard hits Ashen Wolf for 2 (9 → 7).',
+    ]);
+    // A new phase starts a fresh summary.
+    feed({ type: 'phaseStarted', round: 2, phase: 'player', faction: 'rebel' });
+    feed({ type: 'phaseStarted', round: 2, phase: 'ai', faction: 'loyalist' });
+    feed(moved('guard', 4));
+    expect(entries.at(-1)?.text).toBe('Loyalists reposition (1 unit).');
+    expect(repositionText('rebel', 2)).toBe('Rebels reposition (2 units).');
+  });
+
+  it('player moves stay individual', () => {
+    const lookup = makeNameLookup(uiGame());
+    const log = new ChronicleLog();
+    const a = log.push(describeEvent(moved('wolf', 4), lookup) as LogLine);
+    const b = log.push(describeEvent(moved('varek', 5), lookup) as LogLine);
+    expect(a.isNew && b.isNew).toBe(true);
+    expect(b.entry.text).toBe('Varek moves to (5,5).');
   });
 });

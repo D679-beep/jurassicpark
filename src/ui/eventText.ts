@@ -20,6 +20,8 @@ export type LogTone =
 export interface LogLine {
   text: string;
   tone: LogTone;
+  /** Set on a plain AI move: the chronicle folds these into one "reposition" summary per phase. */
+  reposition?: { faction: 'rebel' | 'loyalist'; unitId: string };
 }
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -28,6 +30,10 @@ const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' 
 export function describeEvent(e: GameEvent, name: NameLookup): LogLine | null {
   switch (e.type) {
     case 'moved':
+    {
+      const faction = name.aiFactionOf?.(e.unitId);
+      if (faction) return { text: repositionText(faction, 1), tone: 'move', reposition: { faction, unitId: e.unitId } };
+    }
       return { text: `${name(e.unitId)} moves to (${e.to.x},${e.to.y}).`, tone: 'move' };
     case 'damaged': {
       const who = name(e.targetId);
@@ -107,6 +113,36 @@ export function describeEvent(e: GameEvent, name: NameLookup): LogLine | null {
       return { text: `${e.result === 'victory' ? 'Victory' : 'Defeat'}: ${e.reason}.`, tone: e.result };
     case 'dialogue':
       return { text: `${e.speaker}: “${e.text}”`, tone: 'dialogue' };
+  }
+}
+
+export function repositionText(faction: 'rebel' | 'loyalist', count: number): string {
+  return `${faction === 'rebel' ? 'Rebels' : 'Loyalists'} reposition (${plural(count, 'unit')}).`;
+}
+
+/**
+ * The chronicle as a pure model. Plain AI moves are folded into a single summary
+ * entry per phase (updated in place as more units move); every other line is its own entry.
+ */
+export class ChronicleLog {
+  private summary: { entry: LogLine; units: Set<string> } | null = null;
+
+  /** Adds a line. Returns the entry it landed in and whether that entry is new (else it was updated in place). */
+  push(line: LogLine): { entry: LogLine; isNew: boolean } {
+    if (line.tone === 'phase') this.summary = null;
+    const r = line.reposition;
+    if (!r) return { entry: line, isNew: true };
+    if (!this.summary || this.summary.entry.reposition?.faction !== r.faction) {
+      this.summary = { entry: { ...line }, units: new Set([r.unitId]) };
+      return { entry: this.summary.entry, isNew: true };
+    }
+    this.summary.units.add(r.unitId);
+    this.summary.entry.text = repositionText(r.faction, this.summary.units.size);
+    return { entry: this.summary.entry, isNew: false };
+  }
+
+  reset(): void {
+    this.summary = null;
   }
 }
 

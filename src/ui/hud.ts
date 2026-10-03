@@ -1,8 +1,7 @@
 // DOM HUD inside #hud: clock and bells, turn controls, selected unit with
 // command buttons, hovered tile info, objectives, event log and legend.
 import { findUnit, type GameState } from '../engine';
-import type { LogLine } from './eventText';
-import { factionName } from './eventText';
+import { ChronicleLog, factionName, type LogLine } from './eventText';
 import { bellEra, nextBellText, nextWaveText, objectiveRows, tileInfo, unitGlyph, unitSummary, type TileInfo, type UnitSummary } from './hudModel';
 import type { Pos } from '../engine';
 import { hpColor } from './palette';
@@ -34,6 +33,8 @@ export function escapeHtml(s: string): string {
 export class Hud {
   private readonly sections: Record<'clock' | 'unit' | 'objectives', HTMLElement>;
   private readonly log: HTMLUListElement;
+  private readonly chronicle = new ChronicleLog();
+  private readonly logItems = new WeakMap<LogLine, HTMLLIElement>();
   private readonly cache = new Map<HTMLElement, string>();
 
   constructor(
@@ -196,9 +197,19 @@ export class Hud {
     if (lines.length === 0) return;
     const atBottom = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 30;
     for (const l of lines) {
+      const { entry, isNew } = this.chronicle.push(l);
+      if (!isNew) {
+        // A repositioning summary already in the log: update it in place.
+        const existing = this.logItems.get(entry);
+        if (existing?.isConnected) {
+          existing.textContent = entry.text;
+          continue;
+        }
+      }
       const li = document.createElement('li');
-      li.className = l.tone;
-      li.textContent = l.text;
+      li.className = entry.tone;
+      li.textContent = entry.text;
+      this.logItems.set(entry, li);
       this.log.appendChild(li);
     }
     while (this.log.childElementCount > MAX_LOG) this.log.firstElementChild?.remove();
@@ -207,6 +218,7 @@ export class Hud {
 
   clearLog(): void {
     this.log.innerHTML = '';
+    this.chronicle.reset();
   }
 }
 

@@ -27,6 +27,7 @@ import {
   RANK_NAMES,
   STATUS_NAMES,
   TERRAIN_NAMES,
+  exitName,
   humanize,
   objectName,
   zoneName,
@@ -182,7 +183,7 @@ export function tileInfo(state: GameState, p: Pos): TileInfo | null {
   }
   const bridge = bridgeAt(state, p);
   if (bridge) features.push(`${objectName(bridge)}${bridge.burned ? ' (burned)' : ''}`);
-  for (const e of exitsAt(state, p)) features.push(`Exit: ${humanize(e.id)}`);
+  for (const e of exitsAt(state, p)) features.push(`Exit: ${exitName(e.id)}`);
   for (const d of domainsAt(state, p)) features.push(`Inside ${DOMAIN_NAMES[d.kind]}`);
   const u = unitAt(state, p);
   return {
