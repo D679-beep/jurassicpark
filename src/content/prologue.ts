@@ -60,7 +60,7 @@ const objects: ObjectDef[] = [
   // Ward anchors holding the Wellspring seal.
   { id: 'anchorA', kind: 'anchor', pos: [12, 9], hp: 12 },
   { id: 'anchorB', kind: 'anchor', pos: [19, 9], hp: 12 },
-  { id: 'anchorC', kind: 'anchor', pos: [16, 11], hp: 12 },
+  { id: 'anchorC', kind: 'anchor', pos: [15, 11], hp: 12 },
   // Canal bridges. The centre and east ones are on the Dawn Lantern knights' route.
   { id: 'bridgeWest', kind: 'bridge', tiles: [[5, 15]] },
   { id: 'bridgeCenter', kind: 'bridge', tiles: [[15, 15]], tags: ['barracksRoute'] },
@@ -71,7 +71,7 @@ const units: UnitPlacement[] = [
   // Rebels (player)
   { id: 'varek', name: 'Varek', faction: 'rebel', rank: 'ascendant', character: 'varek', pos: [15, 17] },
   { id: 'kaela', name: 'Kaela', faction: 'rebel', rank: 'kindled', character: 'kaela', pos: [17, 18] },
-  { id: 'grimm', name: 'Grimm', faction: 'rebel', rank: 'ascendant', character: 'grimm', pos: [4, 4], statuses: ['dueling'] },
+  { id: 'grimm', name: 'Grimm', faction: 'rebel', rank: 'ascendant', character: 'grimm', pos: [4, 4], statuses: ['dueling'], stats: { def: 5 } },
   rebel('wolf-s1', 'soldier', [13, 17]),
   rebel('wolf-s2', 'soldier', [14, 19]),
   rebel('wolf-s3', 'soldier', [18, 19]),
@@ -83,13 +83,14 @@ const units: UnitPlacement[] = [
   // Loyalists (AI)
   { id: 'halden', name: 'Emperor Halden', faction: 'loyalist', rank: 'soldier', character: 'halden', pos: [15, 2], tags: ['noResist'] },
   // Elian also needs the escapee tag: the engine only offers the escape interaction to escapees.
-  { id: 'elian', name: 'Crown Prince Elian', faction: 'loyalist', rank: 'ascendant', character: 'elian', pos: [15, 10], statuses: ['sealed'], tags: ['escapee'] },
-  { id: 'orsa', name: 'Lady Orsa', faction: 'loyalist', rank: 'ascendant', character: 'orsa', pos: [5, 4], statuses: ['dueling'] },
+  { id: 'elian', name: 'Crown Prince Elian', faction: 'loyalist', rank: 'ascendant', character: 'elian', pos: [15, 10], statuses: ['sealed'], tags: ['escapee'], stats: { hp: 34, maxHp: 40 } },
+  { id: 'orsa', name: 'Lady Orsa', faction: 'loyalist', rank: 'ascendant', character: 'orsa', pos: [5, 4], statuses: ['dueling'], stats: { hp: 44, atk: 8, def: 5 } },
   { id: 'mira', name: 'Princess Mira', faction: 'loyalist', rank: 'radiant', character: 'mira', pos: [30, 1], tags: ['escapee'] },
   guard('g-throne-1', 'kindled', [14, 3], { guardZone: 'throneHall' }),
   guard('g-throne-2', 'kindled', [17, 3], { guardZone: 'throneHall' }),
-  guard('g-throne-3', 'soldier', [15, 4], { guardZone: 'throneHall' }),
-  guard('g-ante-1', 'soldier', [16, 7], { guardZone: 'throneHall' }),
+  guard('g-throne-3', 'kindled', [15, 4], { guardZone: 'throneHall' }),
+  guard('g-throne-4', 'radiant', [18, 2], { guardZone: 'throneHall' }),
+  guard('g-ante-1', 'kindled', [16, 7], { guardZone: 'throneHall' }),
   guard('g-anchor-1', 'kindled', [12, 7], { tags: ['anchorBreaker'] }),
   guard('g-anchor-2', 'soldier', [13, 7], { tags: ['anchorBreaker'] }),
   guard('g-tower-1', 'kindled', [28, 4], { guardZone: 'princessTower' }),

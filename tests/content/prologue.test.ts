@@ -55,12 +55,12 @@ describe('prologue scenario: structure', () => {
     expect(s.gameOver).toBe(false);
   });
 
-  it('has 11 rebels and 13 loyalists with unique ids on distinct passable tiles', () => {
+  it('has 11 rebels and 14 loyalists with unique ids on distinct passable tiles', () => {
     const s = initial();
     expect(s.units.filter((u) => u.faction === 'rebel')).toHaveLength(11);
-    expect(s.units.filter((u) => u.faction === 'loyalist')).toHaveLength(13);
-    expect(new Set(s.units.map((u) => u.id)).size).toBe(24);
-    expect(new Set(s.units.map((u) => `${u.pos.x},${u.pos.y}`)).size).toBe(24);
+    expect(s.units.filter((u) => u.faction === 'loyalist')).toHaveLength(14);
+    expect(new Set(s.units.map((u) => u.id)).size).toBe(25);
+    expect(new Set(s.units.map((u) => `${u.pos.x},${u.pos.y}`)).size).toBe(25);
   });
 
   it('places every named character with the right faction, rank, statuses and tags', () => {
@@ -101,12 +101,31 @@ describe('prologue scenario: structure', () => {
     );
     expect(wolves.every((u) => u.name === 'Ashen Wolf' && u.faction === 'rebel')).toBe(true);
     const guards = s.units.filter((u) => u.id.startsWith('g-'));
-    expect(guards).toHaveLength(9);
+    expect(guards).toHaveLength(10);
     expect(guards.every((u) => u.name === 'Palace Guard' && u.faction === 'loyalist')).toBe(true);
     expect(guards.filter((u) => u.tags.includes('anchorBreaker')).map((u) => u.id).sort()).toEqual(['g-anchor-1', 'g-anchor-2']);
     expect(get(s, 'g-ante-1').guardZone).toBe('throneHall');
     expect(get(s, 'g-tower-1').guardZone).toBe('princessTower');
     expect(get(s, 'g-bell-1').guardZone).toBe('bellTower');
+    // Throne Hall garrison (balance log): 3 Kindled + 1 Radiant inside, a Kindled on the antechamber.
+    const throne = ['g-throne-1', 'g-throne-2', 'g-throne-3', 'g-throne-4', 'g-ante-1'];
+    expect(throne.map((id) => get(s, id).rank)).toEqual(['kindled', 'kindled', 'kindled', 'radiant', 'kindled']);
+    expect(throne.every((id) => get(s, id).guardZone === 'throneHall')).toBe(true);
+    expect(get(s, 'g-throne-4').pos).toEqual({ x: 18, y: 2 });
+  });
+
+  it('applies the balance-log stat overrides to the duelists and Elian', () => {
+    const s = initial();
+    const stats = (id: string) => {
+      const u = get(s, id);
+      return { hp: u.hp, maxHp: u.maxHp, atk: u.atk, def: u.def, move: u.move };
+    };
+    // Grimm: baseline Ascendant with DEF 5. Orsa, the shield: 44 HP, ATK 8, DEF 5.
+    expect(stats('grimm')).toEqual({ hp: 40, maxHp: 40, atk: 10, def: 5, move: 5 });
+    expect(stats('orsa')).toEqual({ hp: 44, maxHp: 44, atk: 8, def: 5, move: 5 });
+    // The seal draws on the one it holds: Elian starts at 34 of 40.
+    expect(stats('elian')).toEqual({ hp: 34, maxHp: 40, atk: 10, def: 4, move: 5 });
+    expect(stats('varek')).toEqual({ hp: 40, maxHp: 40, atk: 10, def: 4, move: 5 });
   });
 
   it('puts every starting unit in the zone the design names', () => {
@@ -187,18 +206,37 @@ describe('prologue scenario: pacing (map doc section 6)', () => {
     expect(cost(s, 'varek', [15, 7])).toBeLessThanOrEqual(20);
   });
 
-  it('the Wellspring Hall shortcut costs 16 once its doors and the anchor behind the south door are broken', () => {
+  it('the Wellspring Hall shortcut costs 16 once its two barred doors are broken', () => {
     const s = initial();
-    // Doors and anchors are solid until destroyed, so the straight line is blocked: the walk is the long way round.
+    // Barred doors are solid until destroyed, so the straight line is blocked: the walk is the long way round.
     expect(cost(s, 'varek', [15, 3])).toBeGreaterThan(16);
     const open = structuredClone(s);
     const shortcut = new Set(['doorWellNorth', 'doorWellSouth']);
     for (const o of open.map.objects) if (o.kind === 'door' && shortcut.has(o.id)) o.destroyed = true;
-    // doorWellSouth (16,12) opens straight onto anchorC (16,11), which also blocks until destroyed.
-    expect(cost(open, 'varek', [15, 3])).toBe(24);
-    for (const o of open.map.objects) if (o.kind === 'anchor' && o.id === 'anchorC') o.destroyed = true;
+    // anchorC sits at (15,11), beside the tile inside doorWellSouth (16,12), not on it: the route is open.
     expect(cost(open, 'varek', [15, 3])).toBe(16);
     expect(rounds(16, 5)).toBe(4);
+    // Breaking only the south door puts Varek beside the sealed Elian in 2 rounds.
+    const south = structuredClone(s);
+    for (const o of south.map.objects) if (o.id === 'doorWellSouth' && o.kind === 'door') o.destroyed = true;
+    expect(cost(south, 'varek', [16, 10])).toBe(8);
+  });
+
+  it('keeps the ward anchors spread (pairwise distances 7, 6, 5) and off every door tile', () => {
+    const s = initial();
+    const at = (id: string): Pos => {
+      const o = findObject(s, id);
+      if (!o || o.kind !== 'anchor') throw new Error(id);
+      return o.pos;
+    };
+    const d = (a: Pos, b: Pos): number => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    expect(at('anchorC')).toEqual({ x: 15, y: 11 });
+    expect([d(at('anchorA'), at('anchorB')), d(at('anchorA'), at('anchorC')), d(at('anchorB'), at('anchorC'))]).toEqual([7, 5, 6]);
+    // No anchor is orthogonally inside a Wellspring door: (11,10), (11,11), (15,8), (16,12).
+    const insideDoors: Pos[] = [{ x: 12, y: 10 }, { x: 12, y: 11 }, { x: 15, y: 9 }, { x: 16, y: 11 }];
+    for (const id of ['anchorA', 'anchorB', 'anchorC']) {
+      expect(insideDoors.some((t) => t.x === at(id).x && t.y === at(id).y), id).toBe(false);
+    }
   });
 
   it('Mira walks (30,1) to (31,12) at cost 26 (7 rounds), door (26,8) at cost 17', () => {
