@@ -186,6 +186,8 @@ export function createGame(def: ScenarioDef): GameState {
   const objects: MapObject[] = [];
   const blockingTiles = new Set<string>();
   const bridgeTiles = new Set<string>();
+  const gateTiles = new Set<string>();
+  const gateDefs: { where: string; wave: string; tiles: Pos[] }[] = [];
   for (const o of def.objects ?? []) {
     claimId(o.id, `object ${JSON.stringify(o.id)}`);
     const where = `object "${o.id}"`;
@@ -218,9 +220,25 @@ export function createGame(def: ScenarioDef): GameState {
         bridgeTiles.add(posKey(t));
       }
       objects.push({ id: o.id, kind: 'bridge', tiles: tiles.sort(comparePos), tags: [...(o.tags ?? [])], burned: false });
+    } else if (o.kind === 'gate') {
+      // A portcullis: closed at the start, its tiles block movement until its wave arrives.
+      const tiles = posList(o.tiles, `${where} tiles`);
+      if (tiles.length === 0) err(`${where} must have at least one tile`);
+      for (const t of tiles) {
+        if (!passable(t)) err(`${where} tile ${fmt(t)} must be passable terrain (found ${tAt(t)})`);
+        else if (tAt(t) === 'bridge') err(`${where} tile ${fmt(t)} must not be on a bridge`);
+        if (gateTiles.has(posKey(t))) err(`${where} tile ${fmt(t)} belongs to another gate`);
+        gateTiles.add(posKey(t));
+      }
+      if (typeof o.wave !== 'string' || o.wave === '') err(`${where} must name the wave that opens it`);
+      gateDefs.push({ where, wave: o.wave, tiles });
+      objects.push({ id: o.id, kind: 'gate', tiles: tiles.sort(comparePos), wave: o.wave, open: false });
     } else {
       err(`${where} has unknown kind "${(o as { kind: unknown }).kind}"`);
     }
+  }
+  for (const g of gateDefs) {
+    for (const t of g.tiles) if (blockingTiles.has(posKey(t))) err(`${g.where} tile ${fmt(t)} holds a barred door or ward anchor`);
   }
   // Every bridge tile is burnable: undeclared bridge tiles become single-tile bridges.
   terrain.forEach((row, y) =>
@@ -286,6 +304,7 @@ export function createGame(def: ScenarioDef): GameState {
       if (!inB(pos)) err(`${where}: pos ${fmt(pos)} is outside the map`);
       else if (!passable(pos)) err(`${where}: pos ${fmt(pos)} is impassable terrain (${tAt(pos)})`);
       else if (blockingTiles.has(posKey(pos))) err(`${where}: pos ${fmt(pos)} holds a barred door or ward anchor`);
+      else if (needsPos && gateTiles.has(posKey(pos))) err(`${where}: pos ${fmt(pos)} is under a closed gate`);
     } else if (needsPos || !fallbackPos) {
       err(`${where}: pos is required`);
       return null;
@@ -366,6 +385,11 @@ export function createGame(def: ScenarioDef): GameState {
     });
     if (wunits.length === 0) err(`${where}: needs at least one unit`);
     waves.push({ id: w.id, name: w.name ?? w.id, bell: w.bell, delay, spawnTiles, units: wunits, spawned: false, arrivedRound: null });
+  }
+
+  // A gate opens when its wave arrives, so the wave must exist.
+  for (const g of gateDefs) {
+    if (typeof g.wave === 'string' && g.wave !== '' && !waves.some((w) => w.id === g.wave)) err(`${g.where}: unknown wave "${g.wave}"`);
   }
 
   // --- exits ---

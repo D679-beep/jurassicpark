@@ -222,6 +222,35 @@ describe('createGame: validation', () => {
     );
   });
 
+  it('validates gates: tiles in bounds on passable non-bridge ground, no overlaps, a known wave, no unit under them', () => {
+    const map = ['..=#', '+...'];
+    const wave = { id: 'w', bell: 'secondBell' as const, spawnTiles: [[1, 1]] as [number, number][], units: [{ id: 'k', faction: 'loyalist' as const, rank: 'kindled' as const }] };
+    const u = [rebel('a', 'soldier', [0, 0])];
+    const gate = (tiles: [number, number][], extra: Partial<ScenarioDef> = {}, w = 'w') =>
+      issuesOf(scenario(map, u, { waves: [wave], objects: [{ id: 'g', kind: 'gate', tiles, wave: w }], ...extra })).join();
+    expect(() => createGame(scenario(map, u, { waves: [wave], objects: [{ id: 'g', kind: 'gate', tiles: [[1, 1], [2, 1]], wave: 'w' }] }))).not.toThrow();
+    expect(gate([[9, 1]])).toMatch(/outside the 4x2 map/);
+    expect(gate([[3, 0]])).toMatch(/must be passable terrain \(found wall\)/);
+    expect(gate([[2, 0]])).toMatch(/must not be on a bridge/);
+    expect(gate([])).toMatch(/at least one tile/);
+    expect(gate([[1, 1]], {}, 'nope')).toMatch(/unknown wave "nope"/);
+    expect(gate([[1, 1]], {}, '')).toMatch(/must name the wave/);
+    expect(gate([[0, 0]])).toMatch(/under a closed gate/);
+    expect(gate([[0, 1]], { objects: [{ id: 'd', kind: 'door', pos: [0, 1] }, { id: 'g', kind: 'gate', tiles: [[0, 1]], wave: 'w' }] })).toMatch(
+      /holds a barred door or ward anchor/,
+    );
+    const two = issuesOf(
+      scenario(map, u, {
+        waves: [wave],
+        objects: [
+          { id: 'g1', kind: 'gate', tiles: [[1, 1]], wave: 'w' },
+          { id: 'g2', kind: 'gate', tiles: [[1, 1]], wave: 'w' },
+        ],
+      }),
+    ).join();
+    expect(two).toMatch(/belongs to another gate/);
+  });
+
   it('rejects a bad bell schedule', () => {
     expect(issuesOf({ ...ok(), bells: { secondBell: 4 } }).join()).toMatch(/strictly increasing/);
     expect(issuesOf({ ...ok(), bells: { firstBell: 1 } }).join()).toMatch(/>= 2/);
