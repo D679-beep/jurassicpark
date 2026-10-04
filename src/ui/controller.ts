@@ -28,11 +28,11 @@ import { describeEvent } from './eventText';
 import { Hud } from './hud';
 import { bellEra } from './hudModel';
 import type { Era, FxStepContext, Motion } from './gfx/types';
-import { SettingsStore, applySpeed, effectLifeScale } from './settings';
+import { SettingsStore, applySpeed } from './settings';
 import { computeBoardLayout, placeTooltip } from './layout';
 import { makeNameLookup } from './names';
-import { DOMAIN_STYLE } from './palette';
 import { Renderer, type Effect } from './renderer';
+import type { BannerEmblem, BannerTone } from './gfx/fx';
 import {
   NO_SELECTION,
   attackForecast,
@@ -147,7 +147,7 @@ export class GameController {
     this.started = true;
     this.hudDirty = true;
     this.hud.appendLog([{ text: `Round ${this.state.round}: Midnight. The coup begins.`, tone: 'phase' }]);
-    this.spawnBanner('Midnight', `Round ${this.state.round} · Rebel phase`, BANNER_COLORS.rebel, 1300);
+    this.spawnBanner('Midnight', `Round ${this.state.round} · Rebel phase`, BANNER_COLORS.rebel, 1300, 'phase', 'rebel');
     this.hudDirty = true;
   }
 
@@ -298,76 +298,39 @@ export class GameController {
     this.renderer.stepEnded(step, this.stepContext());
   }
 
+  /**
+   * Controller-side effects of a step: the dialogue card and banners. All
+   * board visuals (particles, floats, rings, poses, shake) are scheduled by
+   * fx.onStepStart via renderer.stepStarted (spec 6.3).
+   */
   private spawnEffects(step: AnimStep): void {
-    const now = performance.now();
     const e: GameEvent = step.event;
-    const speed = this.motion.speed;
-    const add = (fx: Effect): void => {
-      if (fx.kind !== 'banner') fx.life = Math.round(fx.life * effectLifeScale(fx.kind, speed));
-      this.effects.push(fx);
-    };
-    switch (e.type) {
-      case 'damaged':
-        add({ kind: 'float', pos: e.pos, text: `-${e.amount}`, color: e.targetKind === 'object' ? '#ffc07a' : '#ff8a7a', start: now, life: 950 });
-        add({ kind: 'flash', tiles: [e.pos], color: 'rgba(255,80,60,0.7)', start: now, life: 300 });
-        break;
-      case 'healed':
-        add({ kind: 'float', pos: e.pos, text: `+${e.amount}`, color: '#9ff0a6', start: now, life: 950 });
-        break;
-      case 'died':
-        add({ kind: 'flash', tiles: [e.pos], color: 'rgba(120,0,0,0.8)', start: now, life: 600 });
-        break;
-      case 'objectDestroyed':
-        add({ kind: 'flash', tiles: [e.pos], color: 'rgba(255,170,80,0.85)', start: now, life: 500 });
-        add({ kind: 'float', pos: e.pos, text: e.objectKind === 'door' ? 'Broken' : 'Shattered', color: '#ffd08a', start: now, life: 1000 });
-        break;
-      case 'domainActivated': {
-        const style = DOMAIN_STYLE[e.domain];
-        add({ kind: 'flash', tiles: e.tiles, color: style.edge, start: now, life: 650 });
-        add({ kind: 'pulse', center: e.center, radius: e.radius, color: style.edge, start: now, life: 900 });
-        add({ kind: 'pulse', center: e.center, radius: e.radius, color: style.label, start: now + 200, life: 900 });
-        break;
-      }
-      case 'reinforcementsArrived':
-        add({ kind: 'flash', tiles: e.units.map((u) => u.pos), color: 'rgba(255,240,190,0.9)', start: now, life: 800 });
-        for (const u of e.units) add({ kind: 'pulse', center: u.pos, radius: 0.6, color: '#fff3c4', start: now, life: 700 });
-        break;
-      case 'bridgeBurned':
-        add({ kind: 'flash', tiles: e.tiles, color: 'rgba(255,120,40,0.9)', start: now, life: 700 });
-        break;
-      case 'sealBroken':
-        for (const id of e.unitIds) {
-          const u = this.state.units.find((x) => x.id === id);
-          if (u) add({ kind: 'pulse', center: u.pos, radius: 2, color: '#9be7ff', start: now, life: 900 });
-        }
-        break;
-      case 'captured':
-        add({ kind: 'float', pos: e.pos, text: 'Captured', color: '#9fe0a8', start: now, life: 1200 });
-        break;
-      case 'escaped':
-        add({ kind: 'float', pos: e.pos, text: 'Escaped', color: '#f39a8a', start: now, life: 1200 });
-        break;
-      case 'dialogue':
-        this.showDialogue(e.speaker, e.text, step.duration);
-        break;
-      default:
-        break;
-    }
-    if (step.banner) {
-      const color =
-        step.banner.tone === 'phase'
-          ? e.type === 'phaseStarted' && e.faction === 'loyalist'
-            ? BANNER_COLORS.loyalist
-            : BANNER_COLORS.rebel
-          : BANNER_COLORS[step.banner.tone];
-      this.spawnBanner(step.banner.title, step.banner.subtitle, color, step.duration);
-    }
+    if (e.type === 'dialogue') this.showDialogue(e.speaker, e.text, step.duration);
+    if (!step.banner) return;
+    const tone = step.banner.tone;
+    const loyalPhase = e.type === 'phaseStarted' && e.faction === 'loyalist';
+    const color = tone === 'phase' ? (loyalPhase ? BANNER_COLORS.loyalist : BANNER_COLORS.rebel) : BANNER_COLORS[tone];
+    const emblem: BannerEmblem =
+      e.type === 'bellRang'
+        ? e.bell === 'dawn'
+          ? 'dawn'
+          : 'bell'
+        : tone === 'phase'
+          ? loyalPhase
+            ? 'loyalist'
+            : 'rebel'
+          : tone === 'objective' && e.type === 'objectiveCompleted'
+            ? 'check'
+            : tone === 'fail'
+              ? 'cross'
+              : 'diamond';
+    this.spawnBanner(step.banner.title, step.banner.subtitle, color, step.duration, tone, emblem);
   }
 
-  private spawnBanner(title: string, subtitle: string, color: string, life: number): void {
+  private spawnBanner(title: string, subtitle: string, color: string, life: number, tone: BannerTone = 'info', emblem: BannerEmblem = 'diamond'): void {
     // One banner at a time: a newer one replaces the old.
     this.effects = this.effects.filter((f) => f.kind !== 'banner');
-    this.effects.push({ kind: 'banner', title, subtitle, color, start: performance.now(), life });
+    this.effects.push({ kind: 'banner', title, subtitle, color, start: performance.now(), life, tone, emblem });
   }
 
   private showDialogue(speaker: string, text: string, duration: number): void {
@@ -402,7 +365,10 @@ export class GameController {
     );
     if (wasBusy && !this.queue.busy) this.onQueueDrained();
     const now = performance.now();
-    this.effects = this.effects.filter((e) => now - e.start < e.life);
+    // Drop expired effects in place (no per-frame allocation).
+    let w = 0;
+    for (const e of this.effects) if (now - e.start < e.life) this.effects[w++] = e;
+    this.effects.length = w;
     const sel = this.selection;
     const showHighlights = !this.locked;
     let hoverPath: Pos[] | null = null;
