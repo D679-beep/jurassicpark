@@ -198,7 +198,7 @@ export class Renderer {
       const p = this.displayPos(u, input);
       blocked.add(`${Math.round(p.x)},${Math.round(p.y)}`);
     }
-    for (const o of state.map.objects) if (o.kind !== 'bridge') blocked.add(posKey(o.pos));
+    for (const o of state.map.objects) if (o.kind !== 'bridge' && o.kind !== 'gate') blocked.add(posKey(o.pos));
     for (const e of state.map.exits) for (const p of e.tiles) blocked.add(posKey(p));
     ctx.font = `600 ${fs}px Georgia, 'Times New Roman', serif`;
     ctx.textAlign = 'left';
@@ -311,7 +311,7 @@ export class Renderer {
   // --- objects ----------------------------------------------------------------
 
   private drawObject(o: MapObject, input: RenderInput): void {
-    if (o.kind === 'bridge') return; // drawn as terrain
+    if (o.kind === 'bridge' || o.kind === 'gate') return; // drawn as terrain
     const { ctx } = this;
     const T = this.tile;
     const destroyed = o.destroyed && !input.overrides.intactObjects[o.id];

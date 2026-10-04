@@ -175,7 +175,7 @@ export function tileInfo(state: GameState, p: Pos): TileInfo | null {
   const info = TERRAIN[t];
   const features: string[] = [];
   for (const o of state.map.objects) {
-    if (o.kind === 'bridge') continue;
+    if (o.kind === 'bridge' || o.kind === 'gate') continue;
     if (o.pos.x === p.x && o.pos.y === p.y) {
       const label = objectName(o);
       features.push(o.destroyed ? `${label} (${o.kind === 'door' ? 'broken open' : 'shattered'})` : `${label}: ${o.hp}/${o.maxHp} HP`);

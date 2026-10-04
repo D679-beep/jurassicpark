@@ -79,7 +79,7 @@ export function selectUnit(state: GameState, unitId: string): Selection {
       case 'attack': {
         const tu = findUnit(state, a.targetId);
         const to = tu ? undefined : findObject(state, a.targetId);
-        const pos = tu?.pos ?? (to && to.kind !== 'bridge' ? to.pos : null);
+        const pos = tu?.pos ?? (to && to.kind !== 'bridge' && to.kind !== 'gate' ? to.pos : null);
         if (pos) targets.push({ id: a.targetId, kind: tu ? 'unit' : 'object', pos: { ...pos }, action: a });
         break;
       }

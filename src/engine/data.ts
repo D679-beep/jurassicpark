@@ -45,6 +45,11 @@ export const TERRAIN: Readonly<Record<Terrain, Readonly<TerrainInfo>>> = {
   pillar: { moveCost: 2, defense: 2, blocksLos: false },
   throne: { moveCost: 1, defense: 1, blocksLos: false },
   dais: { moveCost: 1, defense: 1, blocksLos: false },
+  table: { moveCost: 2, defense: 1, blocksLos: false },
+  crates: { moveCost: 2, defense: 1, blocksLos: false },
+  stairs: { moveCost: 1, defense: 0, blocksLos: false },
+  brazier: { moveCost: null, defense: 0, blocksLos: false },
+  bell: { moveCost: null, defense: 0, blocksLos: false },
 };
 
 export const TERRAIN_TYPES = Object.keys(TERRAIN) as Terrain[];

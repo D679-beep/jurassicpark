@@ -162,10 +162,12 @@ export interface DisplayOverrides {
   intactObjects: Record<string, true>;
   /** Bridges still drawn intact (pending burn). */
   unburnedBridges: Record<string, Pos[]>;
+  /** Gates still drawn closed, keyed by gate id -> the pending wave that opens them. */
+  closedGates: Record<string, string>;
 }
 
 export function emptyOverrides(): DisplayOverrides {
-  return { pos: {}, hp: {}, hidden: {}, ghosts: {}, hiddenDomains: {}, intactObjects: {}, unburnedBridges: {} };
+  return { pos: {}, hp: {}, hidden: {}, ghosts: {}, hiddenDomains: {}, intactObjects: {}, unburnedBridges: {}, closedGates: {} };
 }
 
 /**
@@ -183,6 +185,7 @@ export function addPendingOverrides(base: DisplayOverrides, prev: GameState | nu
     hiddenDomains: { ...base.hiddenDomains },
     intactObjects: { ...base.intactObjects },
     unburnedBridges: { ...base.unburnedBridges },
+    closedGates: { ...base.closedGates },
   };
   const seenPos = new Set<string>(Object.keys(o.pos));
   const seenHp = new Set<string>(Object.keys(o.hp));
@@ -216,6 +219,7 @@ export function addPendingOverrides(base: DisplayOverrides, prev: GameState | nu
       }
       case 'reinforcementsArrived':
         for (const u of e.units) o.hidden[u.unitId] = true;
+        for (const g of prev?.map.objects ?? []) if (g.kind === 'gate' && g.wave === e.waveId && !g.open) o.closedGates[g.id] = e.waveId;
         break;
       case 'domainActivated':
         o.hiddenDomains[e.unitId] = true;
@@ -239,6 +243,7 @@ export function onStepStart(o: DisplayOverrides, step: AnimStep): void {
   switch (e.type) {
     case 'reinforcementsArrived':
       for (const u of e.units) delete o.hidden[u.unitId];
+      for (const [id, wave] of Object.entries(o.closedGates)) if (wave === e.waveId) delete o.closedGates[id];
       break;
     case 'domainActivated':
       delete o.hiddenDomains[e.unitId];

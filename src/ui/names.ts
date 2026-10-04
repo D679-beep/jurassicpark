@@ -38,6 +38,11 @@ export const TERRAIN_NAMES: Record<Terrain, string> = {
   pillar: 'Pillar',
   throne: 'Throne dais',
   dais: 'Dais',
+  table: 'Banquet table',
+  crates: 'Crates',
+  stairs: 'Quay steps',
+  brazier: 'Brazier',
+  bell: 'Great bell',
 };
 
 export const RANK_NAMES: Record<Rank, string> = {

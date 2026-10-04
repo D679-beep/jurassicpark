@@ -14,7 +14,15 @@ export type Terrain =
   | 'bridge'
   | 'pillar'
   | 'throne'
-  | 'dais';
+  | 'dais'
+  // Low cover: banquet tables (Feast Hall) and stacked crates (quay).
+  | 'table'
+  | 'crates'
+  // Steps down from the quay: plays exactly like floor.
+  | 'stairs'
+  // Impassable furniture: lit braziers (inner gate) and the great bell (bell tower).
+  | 'brazier'
+  | 'bell';
 export type CharacterId =
   | 'varek'
   | 'grimm'
@@ -109,8 +117,21 @@ export interface BridgeObject {
   burned: boolean;
 }
 
+/**
+ * A portcullis across a gateway. Closed, its tiles block movement; it opens
+ * for good when its reinforcement wave arrives.
+ */
+export interface GateObject {
+  id: string;
+  kind: 'gate';
+  tiles: Pos[];
+  /** Id of the wave whose arrival opens it. */
+  wave: string;
+  open: boolean;
+}
+
 export type DestructibleObject = DoorObject | AnchorObject;
-export type MapObject = DoorObject | AnchorObject | BridgeObject;
+export type MapObject = DoorObject | AnchorObject | BridgeObject | GateObject;
 
 export interface Exit {
   id: string;
@@ -521,7 +542,8 @@ export interface UnitPlacement {
 export type ObjectDef =
   | { id: string; kind: 'door'; pos: PosLike; hp?: number; def?: number }
   | { id: string; kind: 'anchor'; pos: PosLike; hp?: number; def?: number }
-  | { id: string; kind: 'bridge'; tiles: PosLike[]; tags?: string[] };
+  | { id: string; kind: 'bridge'; tiles: PosLike[]; tags?: string[] }
+  | { id: string; kind: 'gate'; tiles: PosLike[]; wave: string };
 
 export interface WaveDef {
   id: string;
