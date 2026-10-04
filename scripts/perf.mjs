@@ -138,7 +138,10 @@ async function main() {
   try {
     await waitForServer(url);
     log(`preview server up at ${url}; viewport ${viewport.width}x${viewport.height}, ${windowMs} ms per scenario`);
-    browser = await chromium.launch();
+    // Uncapped frame rate so the numbers show render cost, not just vsync drops (PERF_VSYNC=1 keeps the cap).
+    browser = await chromium.launch({
+      args: process.env.PERF_VSYNC ? [] : ['--disable-gpu-vsync', '--disable-frame-rate-limit'],
+    });
     const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     page.on('console', (m) => {
