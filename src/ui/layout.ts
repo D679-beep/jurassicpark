@@ -2,18 +2,36 @@
 // and tooltip placement. No DOM access, so it is unit-testable in node.
 import type { Pos } from '../engine';
 
-/** Below this viewport width the HUD stacks under the map. */
-export const NARROW_BREAKPOINT = 820;
-/** Width of the HUD column on wide screens (CSS px). */
-export const HUD_WIDTH = 340;
-/** Page padding around the board (CSS px). */
-export const GUTTER = 16;
-/** Fraction of the viewport height the board may use on narrow screens. */
-export const NARROW_BOARD_HEIGHT = 0.62;
-/** Height reserved under the map for the hovered-tile info strip (CSS px). */
-export const INFO_BAR = 64;
+/**
+ * Laptop layout: the board on the left, the HUD column on the right, the
+ * hovered-tile strip under the board. Targets 1280x720 up to 1920x1080; on
+ * 16:9 screens the board is width-bound, so the HUD gets a minimum width that
+ * grows with the viewport and then absorbs whatever the integer tile size
+ * leaves over. Narrower windows shrink the tiles (cramped but playable).
+ */
+export const LAPTOP_MIN: Viewport = { width: 1280, height: 720 };
+export const LAPTOP_MAX: Viewport = { width: 1920, height: 1080 };
+/** Page padding around everything (CSS px). */
+export const GUTTER = 8;
+/** Gap between the board column and the HUD (CSS px). */
+export const COLUMN_GAP = 10;
+/** Gap between the board and the tile-info strip under it (CSS px). */
+export const STRIP_GAP = 4;
+/** Minimum HUD width at LAPTOP_MIN and LAPTOP_MAX width (linear in between). */
+export const HUD_MIN_AT_LAPTOP_MIN = 290;
+export const HUD_MIN_AT_LAPTOP_MAX = 400;
+/** Absolute HUD width bounds (CSS px). */
+export const HUD_FLOOR = 240;
+export const HUD_MAX = 460;
+/** Root font size bounds (CSS px): HUD, strip, tooltip and cards scale with it. */
+export const FONT_MIN = 13;
+export const FONT_MAX = 16;
+/** Tile-info strip: two lines at this fraction of the root font and line height, plus padding and border. */
+export const STRIP_FONT = 0.95;
+export const STRIP_LINE = 1.25;
+export const STRIP_CHROME = 8;
 export const MIN_TILE = 8;
-export const MAX_TILE = 56;
+export const MAX_TILE = 64;
 
 export interface Viewport {
   width: number;
@@ -21,31 +39,67 @@ export interface Viewport {
 }
 
 export interface BoardLayout {
-  narrow: boolean;
   /** Tile edge in CSS px, always an integer so tiles land on whole pixels. */
   tile: number;
   /** Board (canvas) size in CSS px. */
   width: number;
   height: number;
+  /** HUD column width in CSS px. */
+  hudWidth: number;
+  /** Root font size in CSS px (1rem). */
+  fontSize: number;
+  /** Height of the tile-info strip under the board in CSS px. */
+  infoHeight: number;
 }
 
-export function isNarrow(vp: Viewport): boolean {
-  return vp.width < NARROW_BREAKPOINT;
+const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+
+/** 0 at LAPTOP_MIN, 1 at LAPTOP_MAX (per axis, clamped). */
+function laptopT(v: number, lo: number, hi: number): number {
+  return clamp((v - lo) / (hi - lo), 0, 1);
 }
 
 /**
- * Largest integer tile size that fits the map into the space left for the
- * board: beside the HUD on wide screens, above it on narrow ones.
+ * Root font size: 13px at 1280x720 rising to 16px at 1920x1080, driven by the
+ * tighter axis so a wide-but-short window does not overflow the HUD.
+ * Rounded to a quarter pixel.
+ */
+export function uiFontSize(vp: Viewport): number {
+  const t = Math.min(
+    laptopT(vp.width, LAPTOP_MIN.width, LAPTOP_MAX.width),
+    laptopT(vp.height, LAPTOP_MIN.height, LAPTOP_MAX.height),
+  );
+  return Math.round((FONT_MIN + (FONT_MAX - FONT_MIN) * t) * 4) / 4;
+}
+
+/** Minimum HUD width for a viewport width: 290px at 1280 up to 400px at 1920. */
+export function hudMinWidth(vp: Viewport): number {
+  const slope = (HUD_MIN_AT_LAPTOP_MAX - HUD_MIN_AT_LAPTOP_MIN) / (LAPTOP_MAX.width - LAPTOP_MIN.width);
+  return Math.round(clamp(HUD_MIN_AT_LAPTOP_MIN + (vp.width - LAPTOP_MIN.width) * slope, HUD_FLOOR, HUD_MIN_AT_LAPTOP_MAX));
+}
+
+/** Height of the two-line tile-info strip for a root font size. */
+export function infoStripHeight(fontSize: number): number {
+  return Math.ceil(2 * STRIP_LINE * STRIP_FONT * fontSize + STRIP_CHROME);
+}
+
+/**
+ * Largest integer tile size that fits the whole map beside a HUD of at least
+ * its minimum width and above the tile-info strip, with no page scroll. The
+ * HUD then takes the width the board does not use (up to HUD_MAX); any rest
+ * centres the board.
  */
 export function computeBoardLayout(vp: Viewport, mapW: number, mapH: number): BoardLayout {
-  const narrow = isNarrow(vp);
-  const availW = narrow ? vp.width - 2 * GUTTER : vp.width - HUD_WIDTH - 3 * GUTTER;
-  const availH = narrow ? vp.height * NARROW_BOARD_HEIGHT : vp.height - 2 * GUTTER - INFO_BAR;
+  const fontSize = uiFontSize(vp);
+  const infoHeight = infoStripHeight(fontSize);
+  const hudMin = hudMinWidth(vp);
+  const availW = vp.width - 2 * GUTTER - COLUMN_GAP - hudMin;
+  const availH = vp.height - 2 * GUTTER - STRIP_GAP - infoHeight;
   const fit = Math.floor(Math.min(availW / Math.max(1, mapW), availH / Math.max(1, mapH)));
-  // On a phone the width is the hard limit: never overflow horizontally.
-  const widthCap = Math.floor((vp.width - 2 * GUTTER) / Math.max(1, mapW));
-  const tile = Math.max(Math.min(MIN_TILE, widthCap), Math.min(MAX_TILE, fit));
-  return { narrow, tile, width: tile * mapW, height: tile * mapH };
+  const tile = clamp(fit, MIN_TILE, MAX_TILE);
+  const width = tile * mapW;
+  const hudWidth = Math.round(clamp(vp.width - 2 * GUTTER - COLUMN_GAP - width, hudMin, HUD_MAX));
+  return { tile, width, height: tile * mapH, hudWidth, fontSize, infoHeight };
 }
 
 /** Backing-store size for a CSS size at a device pixel ratio (integer, at least 1). */
@@ -109,4 +163,32 @@ export function placeTooltip(
   left = Math.max(0, Math.min(left, boundsW - w));
   top = Math.max(0, Math.min(top, boundsH - h));
   return { left, top };
+}
+
+/**
+ * Where to put a zone's name label: the left end of a run of `span` zone
+ * tiles in one row with none of them blocked (units, objects, exits). Tries
+ * the top row first, then the bottom row, then the rows in between; falls
+ * back to the zone's top-left corner.
+ */
+export function placeZoneLabel(tiles: readonly Pos[], span: number, blocked: (p: Pos) => boolean): Pos | null {
+  if (tiles.length === 0) return null;
+  const inZone = new Set(tiles.map((p) => `${p.x},${p.y}`));
+  const ys = [...new Set(tiles.map((p) => p.y))].sort((a, b) => a - b);
+  const order = ys.length > 1 ? [ys[0]!, ys[ys.length - 1]!, ...ys.slice(1, -1)] : ys;
+  const n = Math.max(1, span);
+  for (const y of order) {
+    const xs = tiles.filter((p) => p.y === y).map((p) => p.x).sort((a, b) => a - b);
+    for (const x0 of xs) {
+      let ok = true;
+      for (let i = 0; i < n && ok; i++) {
+        const q = { x: x0 + i, y };
+        ok = inZone.has(`${q.x},${q.y}`) && !blocked(q);
+      }
+      if (ok) return { x: x0, y };
+    }
+  }
+  const minY = ys[0]!;
+  const minX = Math.min(...tiles.filter((p) => p.y === minY).map((p) => p.x));
+  return { x: minX, y: minY };
 }

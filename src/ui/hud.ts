@@ -1,5 +1,6 @@
 // DOM HUD inside #hud: clock and bells, turn controls, selected unit with
-// command buttons, hovered tile info, objectives, event log and legend.
+// command buttons, objectives, event log (scrolls inside its panel) and a
+// collapsible legend. The hovered-tile strip lives under the board.
 import { findUnit, type GameState } from '../engine';
 import { ChronicleLog, factionName, type LogLine } from './eventText';
 import { bellEra, nextBellText, nextWaveText, objectiveRows, tileInfo, unitGlyph, unitSummary, type TileInfo, type UnitSummary } from './hudModel';
@@ -36,6 +37,8 @@ export class Hud {
   private readonly chronicle = new ChronicleLog();
   private readonly logItems = new WeakMap<LogLine, HTMLLIElement>();
   private readonly cache = new Map<HTMLElement, string>();
+  /** The chronicle follows new lines unless the player scrolled up to read. */
+  private followLog = true;
 
   constructor(
     private readonly root: HTMLElement,
@@ -57,7 +60,7 @@ export class Hud {
       return body;
     };
     this.sections = {
-      clock: mk('clock-panel'),
+      clock: mk('clock-panel turn-panel'),
       unit: mk('unit-panel', 'Selected'),
       objectives: mk('objectives-panel', 'Objectives'),
     };
@@ -65,8 +68,23 @@ export class Hud {
     this.log = document.createElement('ul');
     this.log.id = 'log';
     logBody.appendChild(this.log);
-    const legend = mk('legend-panel');
+    this.log.addEventListener('scroll', () => {
+      this.followLog = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 30;
+    });
+    // The panel resizes as the selected-unit panel above it grows and shrinks:
+    // stay pinned to the newest line.
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(() => {
+        if (this.followLog) this.log.scrollTop = this.log.scrollHeight;
+      }).observe(this.log);
+    }
+    const legend = document.createElement('details');
+    legend.className = 'panel legend-panel';
+    // Open by default when the window is tall enough to spare the room.
+    legend.open = window.innerHeight >= 860;
+    root.appendChild(legend);
     legend.innerHTML =
+      '<summary>Legend &amp; keys</summary>' +
       '<div class="legend">' +
       '<span><i style="background:#3e5f82;border:1px solid #b4c3d1"></i>Rebel</span>' +
       '<span><i style="background:#dcb559;border:1px solid #fff"></i>Loyalist</span>' +
@@ -75,7 +93,8 @@ export class Hud {
       '<span><i style="background:rgba(255,72,60,0.7)"></i>Attack</span>' +
       '<span style="color:#ff6b5b">✕ Dueling</span><span style="color:#8cdcff">◌ Sealed</span><span>▼ Drained</span>' +
       '</div>' +
-      '<div class="legend" style="margin-top:4px">Keys: Tab next unit · Esc deselect · E end turn · W wait</div>';
+      '<div class="legend"><span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> cycle units</span><span><kbd>Esc</kbd> deselect</span>' +
+      '<span><kbd>E</kbd> end turn</span><span><kbd>W</kbd> wait</span><span>Hover a target for the damage forecast</span></div>';
 
     const onClick = (ev: MouseEvent): void => {
       const t = (ev.target as HTMLElement | null)?.closest('button');
@@ -109,18 +128,18 @@ export class Hud {
           ? 'The loyalists are moving…'
           : v.locked
             ? 'Resolving…'
-            : 'Your turn. Click a rebel unit.';
+            : 'Your turn: click a rebel unit.';
     const off = !playerTurn || v.locked ? 'disabled' : '';
     this.set(
       this.sections.clock,
       `<p class="title">${escapeHtml(s.scenarioName)}</p>` +
         `<div class="clock"><span>Round <b>${s.round}</b></span><span class="era">${bellEra(s)}</span>` +
         `<span class="phase-pill ${phaseCls}">${phaseText}</span></div>` +
-        `<div class="small" style="margin-top:4px">Next: ${escapeHtml(nextBellText(s))}</div>` +
-        (wave ? `<div class="small muted">Reinforcements: ${escapeHtml(wave)}</div>` : '') +
-        `<div class="small muted" style="margin-top:6px">${status}</div><div class="buttons">` +
-        `<button data-cmd="next" ${off}>Next unit (Tab)</button>` +
-        `<button class="primary" data-cmd="endTurn" ${off}>End Turn (E)</button>` +
+        `<div class="turn-info small">Next: ${escapeHtml(nextBellText(s))}` +
+        (wave ? `<br><span class="muted">Reinforcements: ${escapeHtml(wave)}</span>` : '') +
+        `</div><div class="status${playerTurn && !v.locked && v.started ? ' yours' : ''}">${status}</div><div class="buttons">` +
+        `<button data-cmd="next" ${off}>Next unit<kbd>Tab</kbd></button>` +
+        `<button class="primary" data-cmd="endTurn" ${off}>End Turn<kbd>E</kbd></button>` +
         `</div>`,
     );
 
@@ -154,22 +173,18 @@ export class Hud {
     const buttons = v.selection.commands
       .map((c) => {
         const cls = c.kind === 'domain' ? 'domain' : c.kind === 'interact' ? 'interact' : '';
-        return `<button class="${cls}" data-cmd="${escapeHtml(c.key)}" ${disabled}>${escapeHtml(c.label)}</button>`;
+        const key = c.kind === 'wait' ? '<kbd>W</kbd>' : '';
+        return `<button class="${cls}" data-cmd="${escapeHtml(c.key)}" ${disabled}>${escapeHtml(c.label)}${key}</button>`;
       })
       .join('');
-    const hint =
-      v.selection.moves.length > 0 || v.selection.targets.length > 0
-        ? `<div class="small muted" style="margin-top:6px">${v.selection.moves.length} tiles in reach (blue), ${v.selection.targets.length} target(s) (red).</div>`
-        : '';
     return (
       summaryHtml(sum, unitGlyph(u), u.rank === 'ascendant') +
-      hint +
-      `<div class="buttons">${buttons}<button data-cmd="deselect" ${disabled}>Deselect (Esc)</button></div>`
+      `<div class="buttons">${buttons}<button data-cmd="deselect" ${disabled}>Deselect<kbd>Esc</kbd></button></div>`
     );
   }
 
   private tileHtml(v: HudView): string {
-    if (!v.hover) return '<div class="muted">Hover or tap a tile for terrain, zone and unit details.</div>';
+    if (!v.hover) return '<div class="muted">Hover a tile for terrain, zone and unit details.</div>';
     const info: TileInfo | null = tileInfo(v.state, v.hover);
     if (!info) return '<div class="muted">Outside the map.</div>';
     const parts: string[] = [
@@ -195,7 +210,7 @@ export class Hud {
 
   appendLog(lines: readonly LogLine[]): void {
     if (lines.length === 0) return;
-    const atBottom = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 30;
+    const atBottom = this.followLog;
     for (const l of lines) {
       const { entry, isNew } = this.chronicle.push(l);
       if (!isNew) {
@@ -213,12 +228,16 @@ export class Hud {
       this.log.appendChild(li);
     }
     while (this.log.childElementCount > MAX_LOG) this.log.firstElementChild?.remove();
-    if (atBottom) this.log.scrollTop = this.log.scrollHeight;
+    if (atBottom) {
+      this.log.scrollTop = this.log.scrollHeight;
+      this.followLog = true;
+    }
   }
 
   clearLog(): void {
     this.log.innerHTML = '';
     this.chronicle.reset();
+    this.followLog = true;
   }
 }
 
@@ -230,7 +249,7 @@ function summaryHtml(sum: UnitSummary, glyph: string, asc: boolean): string {
   ].join('');
   return (
     `<div class="unit-head"><span class="token ${sum.faction}${asc ? ' asc' : ''}">${escapeHtml(glyph)}</span>` +
-    `<div><div><b>${escapeHtml(sum.name)}</b></div><div class="small muted">${factionName(sum.faction)} ${escapeHtml(sum.rank)}${sum.turn ? ` · ${escapeHtml(sum.turn)}` : ''}</div></div></div>` +
+    `<div><div class="name">${escapeHtml(sum.name)}</div><div class="small muted">${factionName(sum.faction)} ${escapeHtml(sum.rank)}${sum.turn ? ` · ${escapeHtml(sum.turn)}` : ''}</div></div></div>` +
     `<div class="hpbar"><div style="width:${Math.round(ratio * 100)}%;background:${hpColor(ratio)}"></div></div>` +
     `<div class="stats"><span>HP<b>${sum.hp}/${sum.maxHp}</b></span><span>ATK<b>${sum.atk}</b></span>` +
     `<span>DEF<b>${sum.def}</b></span><span>MOV<b>${sum.move}</b></span><span>RNG<b>${sum.range}</b></span></div>` +
