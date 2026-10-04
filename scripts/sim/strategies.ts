@@ -388,8 +388,17 @@ export const varekSolo: Strategy = {
   sequence: (s) => ['grimm', 'varek', 'kaela', 'wolf-k3', 'wolf-s3'].filter((id) => findUnit(s, id)),
 };
 
+/** Probe: only Grimm plays (he fights the duel from the pillars); everyone else stays home. Measures the duel on its own. */
+export const duelOnly: Strategy = {
+  name: 'duelOnly',
+  description: 'Probe: Grimm fights the duel from the pillars, every other rebel ends its turn.',
+  sequence: (s) => (findUnit(s, 'grimm') ? ['grimm'] : []),
+  order: (s) => grimmOrder(s, 'fight'),
+};
+
 export const STRATEGIES: Strategy[] = [
   endTurnOnly,
+  duelOnly,
   charge,
   chargePinned,
   varekRush,
