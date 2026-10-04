@@ -85,6 +85,7 @@ export class GameController {
   private hudDirty = true;
   private dialogueTimer: number | null = null;
   private lastPointer: string = 'mouse';
+  private dprWatched = 0;
   /** Touch: the target tile whose forecast is showing (second tap attacks). */
   private touchPreview: Pos | null = null;
   private readonly renderer: Renderer;
@@ -387,11 +388,25 @@ export class GameController {
   // --- input -------------------------------------------------------------------------
 
   private resize(): void {
-    const vp = { width: document.documentElement.clientWidth || window.innerWidth, height: window.innerHeight };
+    const root = document.documentElement;
+    const vp = { width: root.clientWidth || window.innerWidth, height: root.clientHeight || window.innerHeight };
     const layout = computeBoardLayout(vp, this.state.map.width, this.state.map.height);
     const dpr = window.devicePixelRatio || 1;
     this.renderer.resize(layout.tile, dpr, this.state.map.width, this.state.map.height);
-    document.documentElement.style.setProperty('--board-w', `${this.renderer.tile * this.state.map.width / dpr}px`);
+    root.style.setProperty('--fs', `${layout.fontSize}px`);
+    root.style.setProperty('--hud-w', `${layout.hudWidth}px`);
+    root.style.setProperty('--info-h', `${layout.infoHeight}px`);
+    root.style.setProperty('--board-w', `${this.renderer.cssWidth}px`);
+    this.watchDpr(dpr);
+    this.updateTooltip();
+  }
+
+  /** Re-lays out when the device pixel ratio changes (browser zoom, moving to another screen). */
+  private watchDpr(dpr: number): void {
+    if (this.dprWatched === dpr || typeof window.matchMedia !== 'function') return;
+    this.dprWatched = dpr;
+    const mq = window.matchMedia(`(resolution: ${dpr}dppx)`);
+    mq.addEventListener?.('change', () => this.resize(), { once: true });
   }
 
   private tileFromEvent(ev: MouseEvent): Pos | null {

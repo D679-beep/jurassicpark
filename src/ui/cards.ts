@@ -44,10 +44,11 @@ export function showIntro(o: IntroOptions): void {
     `<div class="kicker">Prologue</div>` +
     `<h1 id="intro-title">${escapeHtml(s.scenarioName)}</h1>` +
     `<p class="framing">${escapeHtml(o.framing)}</p>` +
-    `<h3>Objectives</h3><ul>${objectives}</ul>` +
-    `<h3>The bells</h3><div class="hint">${bells}. Each bell brings loyalist reinforcements.</div>` +
-    `<h3>Defeat</h3><div class="hint">If Varek or Kaela falls, or Dawn arrives with the Emperor alive.</div>` +
-    `<div class="actions"><button class="primary" id="begin-btn">Begin</button></div>` +
+    `<h3>Objectives</h3><ul class="objective-grid">${objectives}</ul>` +
+    `<div class="facts"><div><h3>The bells</h3><div class="hint">${bells}. Each bell brings loyalist reinforcements.</div></div>` +
+    `<div><h3>Defeat</h3><div class="hint">If Varek or Kaela falls, or Dawn arrives with the Emperor alive.</div></div></div>` +
+    `<div class="actions"><span class="hint">Click a unit to select it, click a blue tile to move, a red one to attack. ` +
+    `Tab cycles units, E ends the turn.</span><button class="primary" id="begin-btn">Begin</button></div>` +
     `</div>`;
   const btn = el.querySelector<HTMLButtonElement>('#begin-btn');
   btn?.addEventListener('click', () => {
@@ -77,8 +78,8 @@ export function showResult(o: ResultOptions): void {
     `<div class="kicker">Round ${o.state.round}</div>` +
     `<h1 id="result-title">${r.result === 'victory' ? 'Victory' : 'Defeat'}</h1>` +
     `<p class="framing">${escapeHtml(r.reason)}.</p>` +
-    `<h3>The night's outcome</h3><ul>${lines}</ul>` +
-    `<h3>Objectives</h3><ul style="list-style:none;padding-left:0">${objectives}</ul>` +
+    `<div class="facts"><div><h3>The night's outcome</h3><ul>${lines}</ul></div>` +
+    `<div><h3>Objectives</h3><ul style="list-style:none;padding-left:0">${objectives}</ul></div></div>` +
     `<div class="actions"><button class="primary" id="again-btn">Play again</button></div>` +
     `</div>`;
   const btn = el.querySelector<HTMLButtonElement>('#again-btn');

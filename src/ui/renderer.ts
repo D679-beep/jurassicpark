@@ -18,7 +18,7 @@ import {
 } from '../engine';
 import type { AnimStep, DisplayOverrides } from './animation';
 import { unitGlyph } from './hudModel';
-import { lerpPath } from './layout';
+import { lerpPath, placeZoneLabel } from './layout';
 import { DOMAIN_NAMES, zoneName } from './names';
 import { COLORS, DOMAIN_STYLE, FACTION_STYLE, hpColor } from './palette';
 import type { Selection } from './selection';
@@ -56,6 +56,10 @@ export class Renderer {
   private cacheKey = '';
   /** Tile edge in device pixels. */
   tile = 16;
+  /** Device pixels per CSS pixel. */
+  dpr = 1;
+  /** Board width in CSS px (tile * map width / dpr). */
+  cssWidth = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -65,15 +69,24 @@ export class Renderer {
 
   /** Sizes the canvas for a CSS tile size at a device pixel ratio. */
   resize(cssTile: number, dpr: number, mapW: number, mapH: number): void {
-    const tile = Math.max(4, Math.round(cssTile * (dpr > 0 ? dpr : 1)));
+    const ratio = dpr > 0 ? dpr : 1;
+    // Floor so a fractional ratio (1.25, 1.5) never makes the board larger than the layout allowed.
+    const tile = Math.max(4, Math.floor(cssTile * ratio + 1e-6));
     this.tile = tile;
+    this.dpr = ratio;
     const w = tile * mapW;
     const h = tile * mapH;
     if (this.canvas.width !== w) this.canvas.width = w;
     if (this.canvas.height !== h) this.canvas.height = h;
-    this.canvas.style.width = `${w / dpr}px`;
-    this.canvas.style.height = `${h / dpr}px`;
+    this.cssWidth = w / ratio;
+    this.canvas.style.width = `${w / ratio}px`;
+    this.canvas.style.height = `${h / ratio}px`;
     this.cacheKey = '';
+  }
+
+  /** A CSS-pixel size in device pixels (for legibility minimums). */
+  private px(css: number): number {
+    return Math.round(css * this.dpr);
   }
 
   /** Converts a CSS-pixel offset inside the canvas to a tile. */
@@ -116,6 +129,9 @@ export class Renderer {
       for (const t of input.selection.targets) this.tileFill(t.pos, COLORS.target, COLORS.targetEdge);
       if (input.hoverPath && input.hoverPath.length > 0) this.drawPath(input.hoverPath);
     }
+
+    // Over the highlights (so reach outlines do not cut through the text), under the units.
+    this.drawZoneLabels(input);
 
     this.drawUnits(input);
     this.drawDomainLabels(input);
@@ -160,6 +176,47 @@ export class Renderer {
     drawExits(g, state, T);
     this.cache = c;
     this.cacheKey = key;
+  }
+
+  // --- zone labels --------------------------------------------------------------
+
+  /**
+   * Zone names, placed each frame on a run of tiles free of units, objects
+   * and exits so a unit standing in the corner does not hide the label.
+   */
+  private drawZoneLabels(input: RenderInput): void {
+    const { ctx } = this;
+    const { state } = input;
+    const T = this.tile;
+    const minFont = this.px(10);
+    if (T < minFont) return;
+    const fs = Math.max(minFont, Math.round(T * 0.3));
+    const pad = Math.max(2, Math.round(fs * 0.25));
+    const blocked = new Set<string>();
+    for (const u of state.units) {
+      if (input.overrides.hidden[u.id]) continue;
+      const p = this.displayPos(u, input);
+      blocked.add(`${Math.round(p.x)},${Math.round(p.y)}`);
+    }
+    for (const o of state.map.objects) if (o.kind !== 'bridge') blocked.add(posKey(o.pos));
+    for (const e of state.map.exits) for (const p of e.tiles) blocked.add(posKey(p));
+    ctx.font = `600 ${fs}px Georgia, 'Times New Roman', serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (const [id, tiles] of Object.entries(state.map.zones)) {
+      const label = zoneName(id).toUpperCase();
+      const w = Math.ceil(ctx.measureText(label).width) + 2 * pad;
+      const at = placeZoneLabel(
+        tiles,
+        Math.ceil((w + pad) / T),
+        (q) => blocked.has(posKey(q)) || terrainAtXY(state, q.x, q.y) === 'pillar',
+      );
+      if (!at) continue;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(at.x * T + pad, at.y * T + pad, w, fs + pad);
+      ctx.fillStyle = COLORS.zoneLabel;
+      ctx.fillText(label, at.x * T + 2 * pad, at.y * T + pad + Math.round(pad / 2));
+    }
   }
 
   // --- overlays ---------------------------------------------------------------
@@ -219,7 +276,7 @@ export class Renderer {
   private drawDomainLabels(input: RenderInput): void {
     const { ctx } = this;
     const T = this.tile;
-    if (T < 12) return;
+    if (T < this.px(12)) return;
     for (const d of input.state.domains) {
       if (input.overrides.hiddenDomains[d.ownerId]) continue;
       const owner = input.state.units.find((u) => u.id === d.ownerId);
@@ -228,16 +285,17 @@ export class Renderer {
       // Label inside the diamond's bottom tip, drawn over units so it stays legible.
       const bottom = tiles.reduce<Pos | null>((m, p) => (m === null || p.y > m.y ? p : m), null);
       if (!bottom) continue;
-      const fs = Math.max(9, Math.round(T * 0.32));
+      const fs = Math.max(this.px(10), Math.round(T * 0.32));
       ctx.font = `700 ${fs}px Georgia, serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
       const label = DOMAIN_NAMES[d.kind].toUpperCase();
-      const w = ctx.measureText(label).width + 8;
+      const pad = Math.round(fs * 0.35);
+      const w = ctx.measureText(label).width + 2 * pad;
       const cx = (bottom.x + 0.5) * T;
-      const y = (bottom.y + 1) * T - 2;
-      ctx.fillStyle = 'rgba(8,7,12,0.8)';
-      ctx.fillRect(cx - w / 2, y - fs - 2, w, fs + 3);
+      const y = (bottom.y + 1) * T - Math.round(fs * 0.15);
+      ctx.fillStyle = 'rgba(8,7,12,0.82)';
+      ctx.fillRect(Math.round(cx - w / 2), y - fs - pad / 2, Math.round(w), fs + pad);
       ctx.fillStyle = DOMAIN_STYLE[d.kind].label;
       ctx.fillText(label, cx, y);
     }
@@ -320,12 +378,12 @@ export class Renderer {
 
   private objectHp(p: Pos, hp: number, maxHp: number): void {
     const T = this.tile;
-    if (T < 14) {
+    if (T < this.px(14)) {
       this.hpBar(p.x * T + T * 0.12, p.y * T + T * 0.86, T * 0.76, hp, maxHp);
       return;
     }
     const { ctx } = this;
-    const fs = Math.max(8, Math.round(T * 0.3));
+    const fs = Math.max(this.px(10), Math.round(T * 0.32));
     ctx.font = `700 ${fs}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
@@ -409,7 +467,7 @@ export class Renderer {
     const glyph = unitGlyph(u);
     const named = u.character !== null;
     ctx.fillStyle = style.glyph;
-    ctx.font = `${named ? 800 : 700} ${Math.max(7, Math.round(T * (named ? 0.42 : 0.36)))}px system-ui, sans-serif`;
+    ctx.font = `${named ? 800 : 700} ${Math.max(this.px(8), Math.round(T * (named ? 0.42 : 0.38)))}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(glyph, cx, cy + T * 0.02);
@@ -486,7 +544,7 @@ export class Renderer {
           const cx = (e.pos.x + 0.5) * T;
           const cy = (e.pos.y + 0.3) * T - t * T * 0.8;
           ctx.globalAlpha = 1 - t * t;
-          ctx.font = `800 ${Math.max(11, Math.round(T * 0.5))}px system-ui, sans-serif`;
+          ctx.font = `800 ${Math.max(this.px(13), Math.round(T * 0.52))}px system-ui, sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.lineWidth = Math.max(2, T / 10);
@@ -528,7 +586,7 @@ export class Renderer {
     const W = this.canvas.width;
     const H = this.canvas.height;
     const fade = t < 0.15 ? t / 0.15 : t > 0.8 ? (1 - t) / 0.2 : 1;
-    const bh = Math.max(48, Math.min(H * 0.22, this.tile * 3));
+    const bh = Math.round(Math.max(this.px(56), Math.min(H * 0.24, this.tile * 3.2)));
     const y = H / 2 - bh / 2;
     ctx.globalAlpha = fade;
     const g = ctx.createLinearGradient(0, 0, W, 0);
@@ -809,22 +867,6 @@ function drawZones(g: CanvasRenderingContext2D, state: GameState, T: number): vo
     g.stroke();
   }
   g.setLineDash([]);
-  if (T < 10) return;
-  const fs = Math.max(8, Math.round(T * 0.3));
-  g.font = `600 ${fs}px Georgia, 'Times New Roman', serif`;
-  g.textAlign = 'left';
-  g.textBaseline = 'top';
-  for (const [id, tiles] of entries) {
-    if (tiles.length === 0) continue;
-    const minX = Math.min(...tiles.map((t) => t.x));
-    const minY = Math.min(...tiles.map((t) => t.y));
-    const label = zoneName(id).toUpperCase();
-    g.fillStyle = 'rgba(0,0,0,0.5)';
-    const w = g.measureText(label).width;
-    g.fillRect(minX * T + 2, minY * T + 2, w + 4, fs + 2);
-    g.fillStyle = COLORS.zoneLabel;
-    g.fillText(label, minX * T + 4, minY * T + 3);
-  }
 }
 
 function drawExits(g: CanvasRenderingContext2D, state: GameState, T: number): void {
