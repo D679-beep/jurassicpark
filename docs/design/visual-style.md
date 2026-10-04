@@ -173,7 +173,7 @@ Flicker (per light, `t` in seconds, `s` = seed from `hash`): `f = 1 + amp * (0.6
 
 ### 3.3 Moonlight
 
-Outdoor tiles (`sites.outdoor`): the outdoor zones `quay`, `innerGate`, `eastCourt`; every canal water tile, bridge and `stairs` tile; and every **non-zone** non-wall, non-door tile reached by a 4-way flood fill from those seeds through non-zone tiles, where the fill never enters a door, a tile inside an interior zone, or a 1-wide corridor tile (walls on both W and E, or on both N and S). This yields the south streets, the outer-gate gap and the east exit tile, and keeps the corridors indoors. Reflecting-pool water (inside an interior zone) is not outdoor. Never `bellTower`. Moon carves `moon` alpha from the darkness and adds the cold sheen. Interiors get no moon, only lanterns and overheads: rooms should feel like pools of warm light in dark stone, the outside like cold blue open ground.
+Outdoor tiles (`sites.outdoor`): the outdoor zones `quay`, `innerGate`, `eastCourt`; every canal water tile, bridge and `stairs` tile; and every **non-zone** non-wall, non-door tile reached by a 4-way flood fill from those seeds through non-zone tiles, where the fill never enters a door, a zone tile, or a 1-wide corridor tile (a non-zone tile with walls, or the map edge, on both W and E or on both N and S; tiles on the map border are never corridors, so edge gaps such as Mira's exit stay open ground). This yields the south streets, the outer-gate gap and the east exit tile, and keeps the corridors indoors. Reflecting-pool water (inside an interior zone) is not outdoor. Never `bellTower`. Moon carves `moon` alpha from the darkness and adds the cold sheen. Interiors get no moon, only lanterns and overheads: rooms should feel like pools of warm light in dark stone, the outside like cold blue open ground.
 
 ### 3.4 Global light states
 
@@ -475,18 +475,18 @@ Reviewers check screenshots at 1280x720 (30 px tiles) and 1920x1080 (46 px), plu
 src/ui/
   renderer.ts     thin orchestrator: canvas, resize, hit-testing (tileAtClient, tileCenterCss), layer order, shake transform
   palette.ts      tokens (section 1) + COLORS aliases
-  settings.ts     speed / reduced-motion store, speedFactor(kind, setting), subscribe()
+  settings.ts     speed / reduced-motion store (SettingsStore, subscribe()), pure helpers: scaleStepDuration, applySpeed, effectLifeScale, shakeScale, particleCap, burstLimit, ambientAllowed, eraTransitionMs
   icons.ts        inline SVG strings for HUD, cards, dialogue
   gfx/
     types.ts      shared interfaces (below); frozen after WS0
     ease.ts       easing functions
     noise.ts      hash(x,y,salt), valueNoise1D/2D
-    sites.ts      per-map analysis: material[][], outdoor[][], lantern/brazier/overhead sites, reflection pairs, exits; scenario table
+    sites.ts      per-map analysis: material[][], outdoor[][], passable[][], light sites, reflection pairs, bridges, doors, stairs, exits, edges, gates (no coordinates)
     terrain.ts    static terrain cache (layer 1)
     materials.ts  floor painters per Material
-    water.ts      canal per-frame pass (layer 2)
-    objects.ts    barred doors and anchors (layer 3) + their lights
-    lighting.ts   darkness/glow canvases, era state + transitions, levelAt()
+    water.ts      canal and pool per-frame pass (layer 2)
+    objects.ts    barred doors, anchors and portcullis gates (layer 3) + their lights
+    lighting.ts   darkness/glow canvases, floor minimum, live desaturation, levelAt() (era state: renderer, 9.2)
     overlays.ts   highlights, path, hovered-zone outline, zone labels (text cache), object HP badges, Domain labels, hover
     figures.ts    sprite painters and cache
     units.ts      per-frame unit pass
@@ -498,63 +498,41 @@ src/ui/
 
 ### 9.2 Interfaces (`gfx/types.ts`)
 
-```ts
-export type Rgb = readonly [number, number, number];
-export type Era = 'Midnight' | 'First Bell' | 'Second Bell' | 'Dawn'; // = hudModel.BellEra
-export interface Motion { reduced: boolean; speed: '1x' | '2x' | 'instant' }
+`src/ui/gfx/types.ts` is the frozen contract (WS0); its header lists who writes and reads every field. Summary:
 
-export interface LightSource {
-  x: number; y: number;          // tile units, fractional
-  radius: number;                // tiles
-  intensity: number;             // 0..1
-  color: Rgb;
-  flicker: number;               // amplitude, 0 = steady
-  seed: number;                  // 0..1
-  lamp: boolean;                 // scaled by the era's lamp factor
-  darken?: boolean;              // Silence: adds darkness instead
-}
+- `Rgb`, `Era` (= `hudModel.BellEra`), `Speed`, `Motion { reduced, speed }`.
+- `RenderInput` (controller -> renderer): the old fields plus `era` (display era) and `motion`. `effects` uses `Effect` from `gfx/fx.ts` (owned by WS4; re-exported from `renderer.ts`).
+- `EraState { from, to, t }` and `EraLight { darkAlpha, floorCap, tint, moon, lamp, desat }` (rows in `palette.ERA_LIGHT`). The **renderer** tracks the transition when `input.era` changes (1500 ms `easeInOutSine`, 600 ms linear in reduced motion) and hands every pass `f.era` and the blended `f.env`; lighting does not own era state.
+- `LightSource { kind, x, y, radius, intensity, color, flicker, seed, lamp, darken? }`: base values; lighting applies flicker and `env.lamp`.
+- `UnitPose { dx, dy, flash, alpha, scale, tilt, clipFromFeet?, facing? }`, `IDENTITY_POSE`.
+- `DisplayUnit { unit, ghost, pos, hp, selected }` and `DisplayDomain { domain, owner, center, tiles }`, built once per frame by the renderer.
+- `MapSites` (section 3.2/3.3/4.1): grids `base`, `material`, `outdoor`, `passable`, `zone`, `corridor`; `zoneBoxes`; sites `lanterns`, `braziers`, `candles`, `bells`, `overheads`; frozen `staticLights`; `water`, `reflections`, `bridges`, `doors`, `stairs`, `exits`, `edges`, `gates`; `key` (stable for a battle: bridges count as built).
+- `GfxFrame`: `ctx, T, dpr, px(), width, height, mapW, mapH, now, dt, motion, era, env, input, state, sites, units, domains, displayPos(), lights, poses, levelAt, shake`. One object reused per frame.
+- Pass interfaces, one factory per module: `createTerrain(): TerrainPass { draw, drawSources }`, `createWater(): WaterPass { draw }`, `createObjects(): ObjectsPass { draw, collectLights, drawSources }`, `createLighting(): LightingPass { draw }` (sets `f.levelAt`), `createOverlays(): OverlaysPass { drawHighlights, drawZoneLabels, drawTopLabels, drawHover }`, `createUnits(): UnitsPass { collectLights, draw }`, `createFx(): FxPass { onStepStart, onStepEnd, computePoses, shakeOffset, drawDecals, collectLights, draw, drawBanner }`, `createDomains(): DomainsPass { drawGround, collectLights, drawUpper }`. All extend `GfxModule { reset(), clear() }`: `reset` drops size/map caches (resize, new map), `clear` forgets per-battle state (restart). No module-level mutable state.
 
-export interface UnitPose {      // written by fx before units draw; identity = {0,0,0,1,1,0}
-  dx: number; dy: number;        // tile units
-  flash: number;                 // 0..1 white overlay
-  alpha: number; scale: number; tilt: number; // radians
-  clipFromFeet?: number;         // 0..1 dissolve
-  facing?: 1 | -1;
-}
-
-export interface GfxFrame {
-  ctx: CanvasRenderingContext2D;
-  T: number; dpr: number; px(css: number): number;
-  now: number; dt: number;
-  motion: Motion;
-  era: { from: Era; to: Era; t: number }; // t 0..1 transition progress
-  input: RenderInput;            // from renderer.ts, extended below
-  sites: MapSites;               // cached per map by sites.ts
-  displayPos(u: Unit): Pos;      // existing logic (pending moves, lerpPath)
-  lights: LightSource[];         // static sites + pushed by objects/domains/units/fx before lighting draws
-  poses: Map<string, UnitPose>;
-}
-```
-
-`RenderInput` gains `era: Era` (display era) and `motion: Motion`. The controller owns the display era: initialised from `bellEra(state)` at start/restart, updated in `onStart` of a step whose event is `bellRang`. `Effect` moves to `gfx/fx.ts` (re-exported from `renderer.ts` until the controller import is updated). **No new `StepKind`s**; the event already carries what fx needs (`sourceId`, `cause`, positions); ranged vs melee is derived from display positions.
+The controller owns the display era (initialised from `bellEra(state)` at start/restart, switched in `onStart` of a `bellRang` step) and forwards step starts/ends to `Renderer.stepStarted/stepEnded` (-> `FxPass.onStepStart/onStepEnd` with `FxStepContext { state, overrides, now, motion }`). **No new `StepKind`s**; the event already carries what fx needs (`sourceId`, `cause`, positions); ranged vs melee is derived from display positions.
 
 ### 9.3 Renderer orchestration
 
 ```ts
 draw(input) {
-  const f = this.frame(input);               // builds GfxFrame, sites, static lights
-  clear(f); this.shake.begin(f);
-  terrain.draw(f); water.draw(f); objects.draw(f);
-  fx.drawDecals(f); domains.drawGround(f);
-  units.collectLights(f); fx.collectLights(f);
-  lighting.draw(f);
-  objects.drawSources(f); terrainSources.draw(f); // lantern cores, braziers (layer 7; in terrain.ts)
-  overlays.drawHighlights(f); overlays.drawZoneLabels(f);
-  fx.computePoses(f); units.draw(f);
-  domains.drawUpper(f); overlays.drawTopLabels(f); overlays.drawHover(f);
-  fx.draw(f); this.shake.end(f); fx.drawBanner(f);
+  const f = this.frame(input);   // sites (cached per map), era/env, units, domains, lights = staticLights, poses cleared, levelAt = 1
+  clear(NIGHT.void);
+  fx.computePoses(f); shake = fx.shakeOffset(f); translate(shake);          // layers 1-14 shaken
+  terrain.draw(f); water.draw(f); objects.draw(f);                          // 1-3
+  fx.drawDecals(f); domains.drawGround(f);                                  // 4
+  objects.collectLights(f); units.collectLights(f); domains.collectLights(f); fx.collectLights(f);
+  lighting.draw(f);                                                         // 5-6, sets f.levelAt
+  objects.drawSources(f); terrain.drawSources(f);                           // 7
+  overlays.drawHighlights(f); overlays.drawZoneLabels(f);                   // 8-9
+  units.draw(f); domains.drawUpper(f);                                      // 10-11
+  overlays.drawTopLabels(f); overlays.drawHover(f);                         // 12-13
+  fx.draw(f);                                                               // 14
+  untranslate(); fx.drawBanner(f);                                          // 15
 }
 ```
+
+After each pass the renderer resets `globalAlpha`, `globalCompositeOperation`, image smoothing and the line dash; passes restore their own transforms and clips.
 
 ### 9.4 Workstreams and file ownership (non-overlapping)
 
