@@ -202,3 +202,52 @@ export function objectLabel(state: GameState, id: string): string {
   const o = findObject(state, id);
   return o ? objectName(o) : humanize(id);
 }
+
+export interface BellMark {
+  id: (typeof BELL_ORDER)[number];
+  name: string;
+  round: number;
+  rung: boolean;
+}
+
+/** The bells in ringing order with their rung state, for the clock's bell track (7.3). */
+export function bellTrack(state: GameState): BellMark[] {
+  const out: BellMark[] = [];
+  for (const id of BELL_ORDER) {
+    const b = state.bells.find((x) => x.id === id);
+    if (b) out.push({ id, name: b.name, round: b.round, rung: b.rung });
+  }
+  return out;
+}
+
+export type StatKey = 'hp' | 'atk' | 'def' | 'mov' | 'rng';
+
+/** Stat cells in HUD order with their long names (tooltips and screen readers). */
+export const STAT_LABELS: ReadonlyArray<{ key: StatKey; short: string; long: string }> = [
+  { key: 'hp', short: 'HP', long: 'Hit points' },
+  { key: 'atk', short: 'ATK', long: 'Attack' },
+  { key: 'def', short: 'DEF', long: 'Defense' },
+  { key: 'mov', short: 'MOV', long: 'Movement' },
+  { key: 'rng', short: 'RNG', long: 'Range' },
+];
+
+export type SpeakerMark = 'bolt' | 'scarf' | 'flame' | 'crown' | 'sun' | 'shield' | 'book' | 'bell';
+
+export interface SpeakerLook {
+  mark: SpeakerMark;
+  /** Plate shape: rhombus for rebels, circle for everyone else (7.2). */
+  plate: 'rebel' | 'loyalist' | 'narrator';
+}
+
+/** Which medallion a dialogue speaker gets (7.2); the narrator and unknown speakers get the bell. */
+export function speakerLook(speaker: string): SpeakerLook {
+  const n = speaker.toLowerCase();
+  if (/\bvarek\b/.test(n)) return { mark: 'bolt', plate: 'rebel' };
+  if (/\bkaela\b/.test(n)) return { mark: 'scarf', plate: 'rebel' };
+  if (/\bgrimm\b/.test(n)) return { mark: 'flame', plate: 'rebel' };
+  if (/\bhalden\b|\bemperor\b/.test(n)) return { mark: 'crown', plate: 'loyalist' };
+  if (/\belian\b/.test(n)) return { mark: 'sun', plate: 'loyalist' };
+  if (/\borsa\b/.test(n)) return { mark: 'shield', plate: 'loyalist' };
+  if (/\bmira\b/.test(n)) return { mark: 'book', plate: 'loyalist' };
+  return { mark: 'bell', plate: 'narrator' };
+}
