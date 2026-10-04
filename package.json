@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "smoke": "npm run build && node scripts/smoke.mjs",
+    "perf": "npm run build && node scripts/perf.mjs",
     "sim": "node scripts/sim/run.mjs"
   },
   "devDependencies": {
