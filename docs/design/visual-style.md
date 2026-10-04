@@ -1,14 +1,14 @@
 # Visual Style: Night of Ashen Lanterns
 
-Status: v1.0 art direction for the prologue map, graphics and animation overhaul. Binding for implementers. Companion to `docs/design/prologue-map.md` (geometry, zones) and `docs/design/prologue-slice.md` (rules).
+Status: v1.1 art direction for the prologue map, graphics and animation overhaul (v1.1: approved map additions, section 10, and the mock review fixes). Binding for implementers. Companion to `docs/design/prologue-map.md` (geometry, zones) and `docs/design/prologue-slice.md` (rules).
 
 Reference mock: the `art-direction` branch, commit "WIP mock prototype" (`src/ui/proto.ts`, screenshots `mock-1920.png`, `mock-1280.png`, `mock-closeup.png`, `mock-1920-dawn.png`). The prototype proves the look; **this document, not the prototype code, is the contract** (see section 11 for its shortcuts).
 
 ## 0. Non-negotiables
 
-1. **Gameplay is untouched.** No changes to `src/engine`, `src/ai`, `src/content`, rules, map geometry, unit positions or existing tests. The UI reads `GameState` and `GameEvent`s only.
+1. **Gameplay is untouched by the visual work.** The approved map additions (section 10) are made by a separate geometry pass in `src/engine` / `src/content`; the visual workstreams never edit `src/engine`, `src/ai`, `src/content` or existing tests. The UI reads `GameState` and `GameEvent`s only and draws whatever geometry is there **by terrain type and zone, never by hard-coded coordinates** (all sites come from `gfx/sites.ts`, 3.2).
 2. **Readability beats mood.** Highlights, units, HP, status, labels and the damage tooltip are always drawn *above* the darkness layer (section 2).
-3. **Decor never invents geometry.** Anything on a passable tile is flat, low-contrast and casts no shadow. Anything that looks raised (cap, face, shadow) is a wall, a closed barred door, or passable cover (pillar, rubble) drawn by the rules in section 4.
+3. **Decor never invents geometry.** Anything on a passable tile is flat, low-contrast and casts no shadow. Anything that looks raised (cap, face, shadow) is either impassable (wall, closed barred door, closed portcullis, brazier, bell) or low cover (pillar, rubble, table, crates), drawn by the rules in sections 4 and 10. Low cover is visibly lower than a wall: no cap and no brick face, a front edge of at most `0.12T` and a cast shadow of at most `0.10T`. Blocking furniture (brazier, bell) is raised *and* lit so it never reads as floor.
 4. **Everything is code-drawn** with canvas 2D. No image/SVG/audio files, no downloads, no web fonts. Fonts: titles `Georgia, 'Times New Roman', serif`; UI `system-ui, -apple-system, 'Segoe UI', sans-serif`.
 5. **Performance:** 60 fps at 1920x1080 (46 px tiles, dpr 1) on an integrated GPU. Static layers cached offscreen; particles capped; no per-frame work while the tab is hidden.
 6. **Motion settings:** honour `prefers-reduced-motion`; add an animation-speed setting `1x | 2x | instant` (section 6.4).
@@ -24,7 +24,7 @@ Tokens replace the current `COLORS` in `src/ui/palette.ts`, grouped into exporte
 | Token | Value | Use |
 |---|---|---|
 | `NIGHT.void` | `#05060c` | canvas clear, beyond-map |
-| `NIGHT.tint` | `rgb(5,9,24)` | darkness colour at Midnight |
+| `NIGHT.tint` | `rgb(6,8,16)` | darkness colour at Midnight (near neutral: no coloured haze, 3.4) |
 | `NIGHT.moon` | `rgb(120,150,215)` | moon sheen (screen blend) |
 | `LIGHT.lantern` | `rgb(255,176,90)` | wall lanterns |
 | `LIGHT.brazier` | `rgb(255,150,70)` | braziers, fire |
@@ -41,14 +41,13 @@ Tokens replace the current `COLORS` in `src/ui/palette.ts`, grouped into exporte
 | `MAT.marble` | `#36343f` / `#2f2d39` | vein `rgba(225,220,255,0.07)`, joint `rgba(0,0,0,0.30)` |
 | `MAT.carpet` | `#5a1824`, dark `#3c0e17` | trim `#c9a24a` |
 | `MAT.plank` | `#3d2b1e` / `#35261b` | seam `rgba(0,0,0,0.38)`, sheen `rgba(255,220,170,0.03)` |
-| `MAT.feastCloth` | `rgba(120,32,44,0.30)` | spilled goblets `rgba(201,162,74,0.35)` / plates `rgba(220,210,190,0.18)` |
 | `MAT.slab` | `#2c2b34` / `#292830` | antechamber, corridors; joint `rgba(0,0,0,0.32)` |
 | `MAT.runner` | `rgba(32,40,70,0.55)` | corridor runner, trim `rgba(201,162,74,0.22)` |
 | `MAT.flag` | `#2d3443` / `#283040` | quay flagstones, moon edge `rgba(180,200,255,0.035)` |
 | `MAT.cobble` | `#2b303b` / `#333946`, gap `#181b22` | courts, streets, inner-gate plaza |
-| `MAT.well` | `#1c2b33` / `#22343d` | Wellspring tiles, rune `rgba(120,225,255,0.26)` |
+| `MAT.well` | `#1c2b33` / `#22343d` | Wellspring floor tiles, rune `rgba(120,225,255,0.26)` (the pool itself: `POOL`, 1.3) |
 | `MAT.tunnel` | `#232027` / `#1e1c22` | damp `rgba(40,70,80,0.22)` |
-| `MAT.parquet` | `#30283a` / `#2a2333` | Princess's Tower, rug `rgba(60,44,100,0.45)` |
+| `MAT.parquet` | `#30283a` / `#2a2333` | Princess's Tower, rug `rgba(60,44,100,0.30)` |
 | `MAT.boards` | `#33281f` / `#2d231b` | Bell Tower |
 
 ### 1.3 Structure and water
@@ -62,11 +61,19 @@ Tokens replace the current `COLORS` in `src/ui/palette.ts`, grouped into exporte
 | `WALL.contact` | `rgba(0,0,0,0.60)` -> 0 (floor under a wall), sides `rgba(0,0,0,0.38)` |
 | `PILLAR.top` / `body` / `plinth` | `#5a5468` / `#3c3748` / `#2e2a38`, shadow `rgba(0,0,0,0.5)` |
 | `DOOR.wood` / `woodDark` / `iron` / `bar` | `#5e3d22` / `#3a2312` / `#8f96a3` / `#2b1a0c` |
-| `WATER.deep` / `mid` | `#081626` / `#0f2a44` |
-| `WATER.ripple` | `rgba(120,170,225,0.22)` |
+| `DOOR.frame` / `threshold` | `#b08850` / `#8a6a3e` (open doors, 4.7) |
+| `WATER.deep` / `mid` / `surface` | `#0a2034` / `#134466` / `#1f7192` (blue-teal surface band: water is always clearly brighter and bluer than walls and floors, 4.6) |
+| `WATER.ripple` / `bank` | `rgba(170,225,245,0.55)` / `rgba(185,215,240,0.55)` (1 px bank edge line) |
 | `WATER.kerb` / `kerbFace` | `#2a2f3b` / `#171a22` |
 | `BRIDGE.wood` / `dark` / `rail` | `#6d4a2b` / `#3b2614` / `#8a6238` |
 | `BRIDGE.charred` | `#1a110a`, ember `#ff7a2e` |
+| `POOL.water` / `deep` / `rim` / `rimTop` / `rune` | `#15485a` / `#0c2c3a` / `#3a4950` / `#71878f` / `rgba(120,225,255,0.50)` |
+| `TABLE.top` / `topEdge` / `front` / `runner` | `#4c3322` / `#7a5634` / `#24170e` / `rgba(140,36,48,0.85)`; plates `#d8cfbd`, goblets `#c9a24a`, candle `LIGHT.flameCore` |
+| `CRATE.wood` / `dark` / `band` | `#6a4b2c` / `#2e2014` / `#8a6a40` |
+| `STAIR.tread` / `riser` / `nosing` | `#3a4354` / `#1b2029` / `rgba(200,215,245,0.22)` |
+| `BRAZIER.iron` / `rim` / `coal` / `legs` | `#2a1f18` / `#7a6650` / `#ff7a2e` / `#16110c` |
+| `BELL.bronze` / `hi` / `dark` / `rope` | `#9c7a3c` / `#e0bd72` / `#4e3a1a` / `#bfa071` |
+| `GATE.iron` / `ironHi` / `shadow` | `#4c525e` / `#a3abb8` / `rgba(0,0,0,0.45)` |
 | `ANCHOR.hi` / `lo` / `edge` / `dead` | `#e6f8ff` / `#6a7cff` / `rgba(60,70,200,0.9)` / `#3b3946` |
 
 ### 1.4 Factions
@@ -114,13 +121,13 @@ Every frame, in this order. "C" = cached offscreen canvas, "F" = drawn per frame
 | # | Layer | Kind | Contents |
 |---|---|---|---|
 | 0 | Clear | F | `NIGHT.void` |
-| 1 | Terrain | C | floors per material, flat decor, contact shadows, pillars, rubble, open doors, bridge decks, burned-bridge remains, 2.5D walls, wall decor (banners, shelves, bell, throne back), lantern fixtures, map-edge openings, escape-exit thresholds. Key: `T`, terrain, unburned-bridge overrides, era-desaturation flag (3.6). |
-| 2 | Canal | F | ripples, lantern and moon reflections on water tiles only |
-| 3 | Objects | F | barred doors and ward anchors (intact/damaged/broken) |
+| 1 | Terrain | C | floors per material, flat decor, contact shadows, pillars, rubble, tables, crates, quay steps, brazier stands and bowls (unlit), the great bell, open doors, bridge decks, burned-bridge remains, canal base and banks, reflecting-pool rim and basin, 2.5D walls, wall decor (banners, shelves, throne back), lantern fixtures, map-edge openings, escape-exit thresholds. Key: `T`, terrain, unburned-bridge overrides, era-desaturation flag (3.4). |
+| 2 | Water | F | canal ripples, lantern and moon reflections; reflecting-pool shimmer and rune glow (water tiles only) |
+| 3 | Objects | F | barred doors, ward anchors (intact/damaged/broken), portcullis gates (closed/rising/open) |
 | 4 | Ground FX | F | ash decals, Domain ground fill + ground patterns, scorch on burned bridges |
 | 5 | Darkness | F | low-res darkness canvas upscaled, `source-over` |
 | 6 | Light glow | F | low-res glow canvas upscaled, `screen` |
-| 7 | Light sources | F | lantern flame pixels, brazier fire, anchor crystal core sparkle: bright, small, above darkness so sources read as sources |
+| 7 | Light sources | F | lantern flame pixels, brazier fire, table candles, anchor crystal core sparkle: bright, small, above darkness so sources read as sources |
 | 8 | Highlights | F | reach, target, hover path (and zone outline of the hovered tile, 4.9) |
 | 9 | Zone labels | F (text cached) | plaques |
 | 10 | Units | F | y-sorted: selection glow, contact shadow, figure sprite, night shade, initial tab, status badges, HP bar |
@@ -138,19 +145,21 @@ Rules: the darkness never covers layers 7-15. Units are not physically lit; they
 
 - Two low-res canvases owned by `gfx/lighting.ts`, **8 px per tile** regardless of `T` (256x176 for this map): `dark` and `glow`.
 - Each frame (or only on change, 3.7):
-  1. `dark`: clear; fill `rgba(tint, darkAlpha)`; add the vignette (radial gradient, inner radius `0.45*min(W,H)` transparent, outer `0.72*max(W,H)` `rgba(0,0,0,0.28)`); then `globalCompositeOperation='destination-out'`: draw the softened outdoor mask at `globalAlpha = moon`, then every light as a radial stamp (alpha stops `k` at 0, `0.7k` at 0.45, 0 at 1).
+  1. `dark`: clear; fill `rgba(tint, darkAlpha)`; add the vignette (radial gradient, inner radius `0.45*min(W,H)` transparent, outer `0.72*max(W,H)` `rgba(0,0,0,0.28)`); then `globalCompositeOperation='destination-out'`: draw the softened outdoor mask at `globalAlpha = moon`, then every light as a radial stamp (alpha stops `k` at 0, `0.7k` at 0.45, 0 at 1), then the **floor minimum**: the softened passable mask (`sites.passable`) at `globalAlpha = max(0, 1 - floorCap/darkAlpha)` so no passable tile is ever darker than `floorCap` (3.4) and floor texture stays readable in corridors, the tunnel and the towers.
   2. `glow`: clear; draw the outdoor mask at `globalAlpha = 0.16*moon/0.36` (cold sheen); then `lighter`: every light as a coloured radial stamp (alpha `0.34k` at 0, `0.10k` at 0.5, 0 at 0.9r; overhead lights `0.16k` / `0.05k`).
   3. On the main canvas, `imageSmoothingEnabled = true`, quality `high`: `drawImage(dark, 0,0, mapW*T, mapH*T)` with `source-over`, then `drawImage(glow, ...)` with `screen`. Restore smoothing to `false`.
 - Light stamps are **pre-rendered sprites** (white radial gradient 64x64 for `dark`, per-colour 64x64 for `glow`), drawn scaled with `globalAlpha = k`. Do not call `createRadialGradient` per light per frame.
-- Outdoor mask: built once per map at 8 px/tile, then softened by drawing 9 copies offset by +-2 px at alpha 1/9 (no `ctx.filter`, Safari-safe).
+- Outdoor and passable masks: built once per map at 8 px/tile, then softened by drawing 9 copies offset by +-2 px at alpha 1/9 (no `ctx.filter`, Safari-safe).
 
 ### 3.2 Light sources
 
 | Kind | Where (from `gfx/sites.ts`) | Pos in tile | Radius (tiles) | Intensity k | Colour | Flicker amp |
 |---|---|---|---|---|---|---|
-| Wall lantern | wall tiles whose south neighbour is floor/pillar/rubble/throne (never door or water), `hash(x,y,99) < 0.17` | `(x+0.5, y+0.85)` | 2.7 | 0.85 | `LIGHT.lantern` | 0.10 |
-| Brazier | inner-gate piers `(12,16) (19,16) (12,20) (19,20)` | `(x+0.5, y+0.12)` | 3.4 | 0.95 | `LIGHT.brazier` | 0.16 |
-| Overhead (no fixture) | `(4.5,3.0,r3.2) (4.5,6.2,r2.6) (16,3.6,r3.4) (26.5,3.8,r3.4) (3.5,19,r2.2) (5,10.9,r2.4)` | as listed | listed | 0.50 | `LIGHT.overhead` | 0.05 |
+| Wall lantern | wall tiles whose south neighbour is floor-like ground (floor, pillar, rubble, throne, dais, table, crates; never door, stairs, water, bridge, brazier or bell), `hash(x,y,99) < 0.17` | `(x+0.5, y+0.85)` | 2.7 | 0.85 | `LIGHT.lantern` | 0.10 |
+| Brazier | every `brazier` tile | `(x+0.5, y+0.35)` | 3.4 | 0.95 | `LIGHT.brazier` | 0.16 |
+| Table candle | `table` tiles with `hash(x,y,5) < 0.5` | `(x+0.5, y+0.45)` | 1.3 | 0.35 | `LIGHT.lantern` | 0.08 |
+| Great bell | every `bell` tile ("light it a little") | `(x+0.5, y+0.5)` | 1.6 | 0.30 | `LIGHT.overhead` | 0 |
+| Overhead (no fixture) | every interior zone (all zones except `quay`, `innerGate`, `eastCourt`): `n = max(1, round(long/6))` lights at the centres of `n` equal segments of the zone bounding box's middle line along its long axis | as derived | `clamp(0.45*short + 1.2, 2.2, 3.4)` (`long`/`short` = box sides in tiles) | 0.50 | `LIGHT.overhead` | 0.05 |
 | Ward anchor | each intact anchor | `(x+0.5, y+0.45)` | 2.0 | 0.70, pulse x(0.85+0.15 sin(t/520)) | `LIGHT.ward` | 0.12 |
 | Seal | each `sealed` unit | tile centre | 1.8 | 0.60 | `LIGHT.seal` | 0.06 |
 | Radiant orb | each Radiant | `(x+0.3, y+0.3)` | 1.1 | 0.35 | faction accent | 0.04 |
@@ -158,26 +167,28 @@ Rules: the darkness never covers layers 7-15. Units are not physically lit; they
 | Burning bridge | burned bridge tiles, 6 s after burn, then embers | tile centre | 2.6 then 1.2 | 0.90 then 0.30 | `rgb(255,120,50)` | 0.25 |
 | FX flash | lightning, impacts, anchor shatter, bell | event pos | 1.5-2.5 | transient, eased to 0 | per effect | 0 |
 
-Site lists that name coordinates are a **per-scenario table** in `sites.ts` keyed by `scenarioId === 'prologue'`; other maps fall back to the hashed lanterns only.
+**No site names a coordinate.** Every site (lanterns, braziers, candles, bell, overheads, reflection pairs, exits, edge openings) is derived in `gfx/sites.ts` from terrain, zones and exits, so the renderer follows the geometry pass and works on any map. Static sites become `LightSource`s once per map (`MapSites.staticLights`).
 
 Flicker (per light, `t` in seconds, `s` = seed from `hash`): `f = 1 + amp * (0.6 sin(2pi*1.7t + 40s) + 0.4 sin(2pi*4.3t + 90s))`; intensity `k*f`, radius `r*(1 + 0.3(f-1))`. Reduced motion: `f = 1`.
 
 ### 3.3 Moonlight
 
-Outdoor tiles (`sites.outdoor`): zones `quay`, `innerGate`, `eastCourt`; every non-zone passable tile with `y >= 15` (south streets); the exit tile `(31,12)`; all water and bridge tiles. Never `bellTower`. Moon carves `moon` alpha from the darkness and adds the cold sheen. Interiors get no moon, only lanterns and overheads: rooms should feel like pools of warm light in dark stone, the outside like cold blue open ground.
+Outdoor tiles (`sites.outdoor`): the outdoor zones `quay`, `innerGate`, `eastCourt`; every canal water tile, bridge and `stairs` tile; and every **non-zone** non-wall, non-door tile reached by a 4-way flood fill from those seeds through non-zone tiles, where the fill never enters a door, a tile inside an interior zone, or a 1-wide corridor tile (walls on both W and E, or on both N and S). This yields the south streets, the outer-gate gap and the east exit tile, and keeps the corridors indoors. Reflecting-pool water (inside an interior zone) is not outdoor. Never `bellTower`. Moon carves `moon` alpha from the darkness and adds the cold sheen. Interiors get no moon, only lanterns and overheads: rooms should feel like pools of warm light in dark stone, the outside like cold blue open ground.
 
 ### 3.4 Global light states
 
-| Era | darkAlpha | tint rgb | moon | lamp x | world desaturation |
-|---|---|---|---|---|---|
-| Midnight | 0.68 | 5,9,24 | 0.36 | 1.00 | 0 |
-| First Bell | 0.64 | 6,10,26 | 0.36 | 1.00 | 0 |
-| Second Bell | 0.58 | 12,14,30 | 0.34 | 0.95 | 0 |
-| Dawn | 0.30 | 60,66,80 (grey) | 0.10 | 0.55 (lanterns gutter) | 0.45 |
+| Era | darkAlpha | floorCap | tint rgb | moon | lamp x | world desaturation |
+|---|---|---|---|---|---|---|
+| Midnight | 0.68 | 0.55 | 6,8,16 | 0.36 | 1.00 | 0 |
+| First Bell | 0.64 | 0.52 | 7,9,18 | 0.36 | 1.00 | 0 |
+| Second Bell | 0.58 | 0.48 | 12,13,22 | 0.34 | 0.95 | 0 |
+| Dawn | 0.30 | 0.30 | 60,66,80 (grey) | 0.10 | 0.55 (lanterns gutter) | 0.45 |
 
-`lamp` multiplies lantern, brazier and overhead lights only (wards, seals, Domains, fire keep full strength). Desaturation: `globalCompositeOperation='saturation'`, fill `#808080` at the listed alpha over layers 1-4.
+`floorCap` is the darkest any passable tile may be (3.1); it keeps corridors, the servants' tunnel and the Princess's Tower readable (the mock's near-black corridors are a bug). **No coloured haze:** the darkness tint stays near neutral, the cold sheen is drawn on outdoor tiles only, and nothing purple is laid over interiors; interior floors keep their material hue under the darkness.
 
-**Transitions:** the display era is set when the `bellRang` step *starts* (not from `state`, which is already ahead). All parameters lerp over `TIMING.bell` (1500 ms) with `easeInOutSine`; desaturation is a live full-screen pass during the transition, then baked into the terrain cache (cache key includes the era flag). Reduced motion: 600 ms linear crossfade.
+`lamp` multiplies lantern, brazier, candle, bell and overhead lights only (wards, seals, Domains, fire keep full strength). Desaturation: `globalCompositeOperation='saturation'`, fill `#808080` at the listed alpha over layers 1-4.
+
+**Transitions:** the display era is set when the `bellRang` step *starts* (not from `state`, which is already ahead). All parameters lerp over `TIMING.bell` (1500 ms) with `easeInOutSine` (the renderer tracks the transition and hands it to every module as `GfxFrame.era` / `GfxFrame.env`, 9.2); desaturation is a live full-screen pass during the transition, then baked into the terrain cache (cache key includes the era flag). Reduced motion: 600 ms linear crossfade.
 
 ### 3.5 Readability above the darkness
 
@@ -200,15 +211,19 @@ Rebuild `dark`/`glow` only when: a flickering light exists and motion is allowed
 | Region | Material | Floor painter (per tile, varied by `hash(x,y,salt)`) |
 |---|---|---|
 | `throneHall` | marble | one slab per tile, checker A/B by `(x+y)%2`, one bezier vein, 1 px joints, top 1 px sheen |
-| `wellspringHall` | well | 3x3 ceramic tiles per tile, random A/B, 1 px dark grout |
+| `wellspringHall` | well (its `water` tiles: `pool`, section 10) | 3x3 ceramic tiles per tile, random A/B, 1 px dark grout |
 | `feastHall` | plank | 4 horizontal planks per tile, staggered butt joints `((x*7+j*3)%4)/4` |
 | `princessTower` | parquet | 2x2 herringbone-like blocks, 2 grain lines per block |
 | `bellTower` | boards | 4 vertical boards |
 | `innerGate` | cobble (plaza variant) | 2x2 square setts |
 | `servantsTunnel` | tunnel | rough stone, damp ellipse on 35 % of tiles |
-| `eastCourt`, non-zone `y>=15`, `(31,12)` | cobble | 3x3 rounded cobbles, alternate rows offset half a stone |
-| `quay` | flag | large flags with half-tile offset joints, cold top sheen |
+| `eastCourt`, non-zone outdoor tiles (3.3) | cobble | 3x3 rounded cobbles, alternate rows offset half a stone |
+| `quay`, `stairs` tiles anywhere | flag | large flags with half-tile offset joints, cold top sheen (steps drawn over it, section 10) |
+| canal `water` / `bridge` tiles | canal | 4.6 |
+| `water` inside any interior zone | pool | section 10 |
 | `antechamber`, other non-zone interior floor | slab | slab with 1 px joints |
+
+Rows are checked in this order: `stairs`, then water/bridge (canal or pool), then the zone rows. Non-floor terrain (pillar, rubble, table, crates, brazier, bell, door, throne, dais) gets the material of its region underneath; walls get `wall`.
 
 ### 4.2 Walls (2.5D, contained in their own tile)
 
@@ -222,46 +237,49 @@ Rebuild `dark`/`glow` only when: a flickering light exists and motion is allowed
 
 | Room | Decoration (all flat; contrast limits in checklist 2) |
 |---|---|
-| Throne Hall | Red carpet runner x 15..16 (inset `0.12T` each side), y 3..6, gold trim line inset `0.2T`. Dais/throne tiles: `carpetDark` with `carpet` inset `0.06T`, gold lozenge `rgba(201,162,74,0.22)`, and a **step face** `0.13T` (`#6e5a3a`, gold 1 px top) on dais tiles whose south neighbour is not dais, plus `0.10T` shadow on the floor below (dais is +1 DEF, so "a low step" is honest). Throne back drawn **on the wall tiles** `(15,0)-(16,0)`: `#7a1f2c` panel `0.76T` wide with gold border and a gold point; nothing on `(15,1)/(16,1)` beyond the dais (they are Confront tiles). |
-| Feast Hall | Wood planks. "Long tables" are **not drawn as tables**: two banquet cloths dragged to the floor, rows y 2 and y 6, x 2..7, `0.44T` high, `MAT.feastCloth`, 9 spilled goblets/plates per cloth (`r = 0.05T` dots). No legs, no top face, no shadow. Reads as the aftermath of an overturned feast. |
-| Antechamber | Slab. Loyalist banners on the **wall faces** of row 6 at x 11, 13, 18, 20: `#6a1f2a` swallow-tail `0.36T x 0.50T` starting `0.12T` above the face, gold sun disc `r 0.07T`. |
-| Wellspring Hall | Ceramic tiles. Rune ring inlay: two ellipses centred `(16, 10.5)` radii `(1.35T*1.6, 1.35T*0.85)` and `(1.6T*1.6, 1.6T*0.85)`, `MAT.well rune`, 16 rune ticks `0.08T x 0.12T` on the mid ellipse. Rite dais `(15,10) (16,10)`: flat glowing font inlay `#16323c`, inner square stroke `rgba(140,230,255,0.45)`. **No pool or water on the floor** (it would read as impassable). |
-| Bell Tower | Boards. Bronze bell (`#9c7a3c`, highlight `#d9b46a`, `0.48T` wide) on the **wall face** of `(3,17)`. Faint rope coil `rgba(190,160,110,0.45)` `r 0.16T` at `(3.5,18.45)`. |
-| Princess's Tower | Parquet, violet rug `rgba(60,44,100,0.45)` x 24.3..29.7, y 1.3..2.7. Bookshelves on the north wall faces x 24..29 (6 spines `0.10T x 0.30T` in `#5a2d3a #2d4a5a #5a4a2d #3a2d5a`). |
-| Servants' tunnel | Tunnel stone, damp patches, no moon, lit only by its lantern(s) and the overhead at `(5,10.9)`. |
-| Corridors (x 10, x 21) | Slab with a blue runner `0.56T` wide on floor tiles y 1..12. |
-| Quay | Flags, moonlit. Retaining wall: water tiles whose north neighbour is open get a kerb face `0.16T` `WATER.kerbFace` + 1 px `rgba(160,180,220,0.18)` lip + `0.08T` shadow. Water tiles with open ground south get a `0.06T` `WATER.kerb` lip. |
-| Courts / streets / plaza | Cobbles, moonlit. Braziers on the four inner-gate piers (4.5). |
+| Throne Hall | Red carpet runner on the dais's two centre columns from the row below the dais to the hall's southern edge (inset `0.12T` each side), gold trim line inset `0.2T`. Dais/throne tiles: `carpetDark` with `carpet` inset `0.06T`, gold lozenge `rgba(201,162,74,0.22)`, and a **step face** `0.13T` (`#6e5a3a`, gold 1 px top) on dais tiles whose south neighbour is not dais, plus `0.10T` shadow on the floor below (dais is +1 DEF, so "a low step" is honest). Throne back drawn **on the wall tiles** directly north of the dais's two centre columns: `#7a1f2c` panel `0.76T` wide with gold border and a gold point; nothing on the dais tiles beyond the dais itself (they are Confront tiles). |
+| Feast Hall | Wood planks. The banquet tables are `table` terrain, drawn as real tables (section 10). A few spilled goblets (`r 0.05T`, `rgba(201,162,74,0.35)`, flat) on floor tiles next to tables, `hash < 0.3`. |
+| Antechamber | Slab. Loyalist banners on the **wall faces** directly north of antechamber tiles, at most 4: the face tiles with the lowest `hash(x,y,31)` that are not lantern sites and not next to a door: `#6a1f2a` swallow-tail `0.36T x 0.50T` starting `0.12T` above the face, gold sun disc `r 0.07T`. |
+| Wellspring Hall | Ceramic tiles. The zone's `water` tiles are the **tiled reflecting pool** (section 10). Rune ring inlay on floor tiles only: two ellipses centred on the centroid of the zone's `throne`/`dais` tiles (zone centre if none), radii `(1.35T*1.6, 1.35T*0.85)` and `(1.6T*1.6, 1.6T*0.85)`, `MAT.well rune`, 16 rune ticks `0.08T x 0.12T` on the mid ellipse. Rite dais (the zone's `throne` tiles): flat glowing font inlay `#16323c`, inner square stroke `rgba(140,230,255,0.45)`. |
+| Bell Tower | Boards. The great bell is a `bell` terrain tile (section 10); nothing is painted on the wall faces. |
+| Princess's Tower | Parquet, violet rug `rgba(60,44,100,0.30)` over the zone's top two rows (floor tiles only, inset `0.3T` at the outer edge). Bookshelves on wall faces directly north of zone tiles (6 spines `0.10T x 0.30T` in `#5a2d3a #2d4a5a #5a4a2d #3a2d5a`). |
+| Servants' tunnel | Tunnel stone, damp patches, no moon, lit by its lantern(s) and its derived overheads; `floorCap` (3.4) keeps the stone readable. |
+| Corridors (1-wide non-zone runs, walls on both sides) | Slab with a blue runner `0.56T` wide along the corridor's axis; readable at Midnight thanks to `floorCap`. |
+| Quay | Flags, moonlit; `crates` and `stairs` per section 10. Retaining wall: water tiles whose north neighbour is open ground (not `stairs`, which run down into the water) get a kerb face `0.16T` `WATER.kerbFace` + 1 px `rgba(160,180,220,0.18)` lip + `0.08T` shadow. Water tiles with open ground south get a `0.06T` `WATER.kerb` lip. |
+| Courts / streets / plaza | Cobbles, moonlit. Braziers are `brazier` tiles (section 10); the plaza's pillars are plain piers. |
 
 ### 4.4 Rubble = honest low cover
 
-Rubble is passable at cost 2, +1 DEF. Outdoors it is drawn as **broken crates and a barrel** (crates `0.30T` and `0.26T`, `#5a4128` with `#2e2014` outline and diagonal plank, barrel `r 0.10T` `#4a3a2a`) placed in the tile's corners (`(0.25,0.27)`, `(0.74,0.70)`, `(0.74,0.26)`), plus 5 stones `0.06-0.14T` with `0.4` alpha drop shadows. Indoors only the stones. The centre of the tile stays free for the unit.
+Rubble is passable at cost 2, +1 DEF. It is drawn everywhere as **broken masonry**: one fallen block `0.30T x 0.18T` (`PILLAR.body`, lit top edge `PILLAR.top`) in a corner chosen by hash, plus 5 stones `0.06-0.14T` with `0.4` alpha drop shadows. No crates or barrels (those are `crates` terrain, section 10, and must not be confused with rubble). The centre of the tile stays free for the unit.
 
 ### 4.5 Pillars = passable cover at the back of the tile
 
-Pillars are passable (cost 2, +2 DEF). The column stands at the **back (north) half** of its tile so a unit on it is drawn in front of it, "in cover": shaft x `0.5T +- 0.20T`, y `0.10T..0.50T`, 3 flutes, left-lit gradient; plinth `0.56T x 0.10T` at `0.46T`; capital `0.54T x 0.09T` at `0.05T`; shadow ellipse `(+0.10T, +0.06T)`, radii `0.30T x 0.11T`. Inner-gate piers carry a brazier bowl (`r 0.20T x 0.08T`, `#2a1f18`) on the capital with three layered flame tongues (layer 7).
+Pillars are passable (cost 2, +2 DEF). The column stands at the **back (north) half** of its tile so a unit on it is drawn in front of it, "in cover": shaft x `0.5T +- 0.20T`, y `0.10T..0.50T`, 3 flutes, left-lit gradient; plinth `0.56T x 0.10T` at `0.46T`; capital `0.54T x 0.09T` at `0.05T`; shadow ellipse `(+0.10T, +0.06T)`, radii `0.30T x 0.11T`.
 
 ### 4.6 Canal and bridges
 
-- Base (cached): vertical gradient `deep -> mid -> deep` per water tile, kerbs per 4.3.
-- Ripples (layer 2): per water tile, 2 wavelets at `y = 0.38T, 0.64T`, length `(0.35 + 0.3h)T`, drift `x = ((now/2600 + h) mod 1) * T`, alpha `0.35 + 0.5*(0.5+0.5 sin(now/700 + 6.28h))` of `WATER.ripple`, `T/30` px. Reduced motion: drawn once into the cache.
-- Reflections (layer 2, `lighter`): for each lantern/brazier within 3.2 rows of a water tile in its column, 5 stacked streaks per water tile at `0.18T + i*0.16T`, width `(0.30 - 0.03i)T * (0.7 + 0.3 sin(now/240 + 1.7i + 9s))`, alpha `(0.55 - 0.07i) * (1 - dy/4)`, colour = light colour, x jitter `0.04T sin(now/300 + i)`. Precompute the (light, water tile) pairs per map.
-- Bridge (cached): drop shadow on water `rgba(0,0,0,0.45)`, deck `0.80T` wide, 5 plank seams, rails `0.09T` at both sides, 4 posts `0.13T`. Burned: charred stumps `BRIDGE.charred` + 2 ember pixels pulsing (layer 4) for the rest of the battle.
+The canal is 2 tiles wide (section 10). **Water must read as water at 30 px** (the mock's canal was too dull and merged with the walls):
+
+- Base (cached, layer 1): per canal column, a vertical gradient over the canal's full height (the run of water/bridge rows in that column): `deep` at 0, `mid` at 0.22, `surface` at 0.5, `mid` at 0.78, `deep` at 1, so the canal shows one bright blue-teal band along its middle. Kerbs per 4.3. A 1 px `WATER.bank` line on the water side of every edge where a water tile meets open ground or stairs (the bank edge line).
+- Ripples (layer 2): per water tile, 3 wavelets at `y = 0.30T, 0.52T, 0.74T` of the tile, length `(0.35 + 0.3h)T`, drift `x = ((now/2600 + h) mod 1) * T` (alternate rows drift the other way), alpha `0.45 + 0.5*(0.5+0.5 sin(now/700 + 6.28h))` of `WATER.ripple`, `max(1, T/22)` px. They must be visible without zooming. Reduced motion: drawn once into the cache.
+- Reflections (layer 2, `lighter`): every lantern/brazier within 3.2 rows of the canal in its column (`MapSites.reflections`) casts a **vertical shimmering streak**: on each water tile of that column, 5 stacked horizontal dashes at `0.18T + i*0.16T`, width `(0.30 - 0.03i)T * (0.7 + 0.3 sin(now/240 + 1.7i + 9s))`, alpha `(0.65 - 0.07i) * (1 - dy/4)`, colour = light colour times the era `lamp`, x jitter `0.04T sin(now/300 + i)`. Together they read as a column of broken light on the water. The moon adds a faint `rgba(180,200,255,0.10)` sheen band on the `surface` row. The pairs are precomputed per map.
+- Bridges (cached) span the canal as **one continuous deck over all their tiles** (`MapSites.bridges`: tiles, axis): drop shadow on the water beside the deck `rgba(0,0,0,0.45)`, deck `0.80T` wide across the flow, plank seams every `0.2T` across the deck, rails `0.09T` along both sides for the whole span, posts `0.13T` only at the two ends of the span (on the bank side of the first and last tile). Burned: charred stumps `BRIDGE.charred` at both ends, a broken beam fragment per tile, plus 2 ember pixels per tile pulsing (layer 4) for the rest of the battle.
 
 ### 4.7 Doors and objects
 
 | Object | Intact | Damaged (`hp < 50 %`) | Broken / destroyed |
 |---|---|---|---|
-| Ordinary door (terrain `door`, no object): **passable** | Architect's-plan symbol, oriented to the passage: jamb stubs `0.10T` (`WALL.cap` + rim), threshold `0.08T` `rgba(120,112,135,0.55)`, two leaves (`0.07T` thick) swung open against the jambs, dashed swing arcs `rgba(232,200,114,0.28)`. Floor stays visible. | n/a | n/a |
+| Ordinary door (terrain `door`, no object): **passable** | A visible **open door**, oriented to the passage (`MapSites.doors[].axis`): warm door frame posts `0.12T` in `DOOR.frame` on both jambs with a 1 px `LIGHT.flameBody` inner highlight, a threshold strip `0.16T` in `DOOR.threshold` across the passage at the wall line, and one door leaf (`DOOR.wood`, `0.10T` thick, `0.70T` long, darker edge `DOOR.woodDark`, iron ring dot) swung open 90 degrees against one jamb, with a `0.06T` shadow. The passage between the posts shows the floor. Must be findable at 30 px (the mock's floor-plan symbol was too faint). | n/a | n/a |
 | Barred door (object): **impassable** | Full-tile closed leaves `0.92T x 0.80T` with plank lines, two iron bands, a heavy crossbar `0.14T` with iron ends, stone jambs `0.10T` in `WALL.cap` top and bottom (reads as part of the wall). HP badge above darkness. | crossbar rotated `-0.18 rad`, two dark cracks, bands kept | threshold strip, four splinters (`DOOR.woodDark`) against the jambs; floor visible; no HP badge |
 | Ward anchor | floating crystal (diamond `0.30T x 0.44T`, gradient `ANCHOR.hi -> lo`, edge `ANCHOR.edge`) bobbing `0.03T` (period 3.3 s), small shadow, rune ellipse on the floor `0.34T x 0.13T`, light per 3.2 | crack line through the crystal, light flicker 0.25 | rune ellipse dim `rgba(90,100,140,0.35)`, three dull shards `ANCHOR.dead`, no light |
 | Bridge | 4.6 | n/a | 4.6 charred |
+| Portcullis (`gate` object) | section 10, closed | rising during its `arrive` step | section 10, open |
 
 ### 4.8 Exits and gates
 
-- All map-edge openings fade to black over `1.2T` toward the edge (west gate y 13-14, tunnel y 10-11, east `(31,12)`, south gap x 22..25).
+- All map-edge openings (`MapSites.edges`: every non-wall tile on the map border, with its off-map direction) fade to black over `1.2T` toward the edge.
 - **Escape exits** (`state.map.exits`): threshold glow `STATUS.escapee` at 0.25 on the tile, three chevrons pointing off-map (`0.22T`, alpha cycling 0.25 -> 0.8, 1200 ms stagger 150 ms; static in reduced motion), and a small escapee badge at the inner edge. Must be visible at 30 px.
-- Reinforcement gates (west gate tiles, south gap) are not exits: no chevrons; they light up only during `arrive` (6.3).
+- Reinforcement gates (edge openings that are not escape exits) have no chevrons; they light up only during `arrive` (6.3). The outer-gate gap carries the portcullis (section 10).
 
 ### 4.9 Zones
 
@@ -319,7 +337,7 @@ All named units also get an **initial tab** at the top-left: dark plate `rgba(8,
 | Selection | ground glow radial `r 0.55T` at the feet (faction accent at 0.55) + four **corner brackets** `0.26T` long, `max(2, T/14)` px, white alpha `0.6 + 0.4*(0.5+0.5 sin(now/160))` (static 0.9 in reduced motion) |
 | Acted / spent | acted only: alpha 0.80. Moved and acted: `spent` sprite at alpha 0.60, no bob |
 | Night shade | 3.5 |
-| Status badges | top-right, right-to-left in the order sealed, dueling, drained, escapee (escapee only while not sealed). Circle `r = max(5.5 css px, 0.14T)`, fill `rgba(8,8,14,0.88)`, ring `r/5` px in the status colour. Icons: dueling = **crossed swords**; sealed = **padlock** plus a dashed ellipse `0.42T x 0.17T` around the feet, dash `T/10, T/14`, offset `-now/60`; drained = **cracked drop**; escapee = **arrow out**. The old red X is removed. |
+| Status badges | top-right, right-to-left in the order sealed, dueling, drained, escapee (escapee only while not sealed). Circle `r = max(5.5 css px, 0.14T)`, fill `rgba(8,8,14,0.88)`, ring `r/5` px in the status colour. Icons: dueling = **crossed swords**: two diagonal blades in light steel `#e8edf2` (`max(1.5, r/3)` px) each with a distinct crossguard bar and pommel dot, over the `STATUS.dueling` ring; it must never read as a plain X (the mock's badge still did); sealed = **padlock** plus a dashed ellipse `0.42T x 0.17T` around the feet, dash `T/10, T/14`, offset `-now/60`; drained = **cracked drop**; escapee = **arrow out**. The old red X is removed. |
 | HP bar | x `0.14T`, width `0.72T`, height `max(3 css px, round(0.09T))`, bottom `2 px` above the tile edge; back `HP.back` with 1 px border; fill by ratio (`>0.6` good, `>0.3` mid, else low). Ascendants and Orsa/Elian: 1 px dark ticks every 10 HP. **Damage ghost:** when displayed HP drops, the lost segment shows `HP.ghost` and shrinks to 0 over 400 ms `easeOutQuad` (renderer keeps `lastHp` per id). Heal: the gained segment flashes `#bff5c2` 300 ms. |
 
 ## 6. Animation
@@ -359,9 +377,9 @@ No shake in reduced motion, at `instant` speed, or while input is unlocked.
 | `objectBreak` anchor | 320 ms | Crystal shatters into 16 light shards (`#c8f4ff -> #6a7cff`, radial `2-4T/s`, life 500 ms, `lighter`), light flash r 2.5 k 0.9 -> 0 over 500 ms, rune ring fades over 320 ms. |
 | `domain` (`domainActivated`) | 750 ms | Existing two diamond pulses stay. Edge grows from the owner outward p 0-0.6 (`easeOutCubic`); domain light ramps in. Bespoke per kind below. |
 | `domainEnd` | 260 ms | Edge contracts `0.3T` inward and fades (`easeInQuad`), 6 particles in the domain colour puff out, light ramps out. If drained, the owner flashes grey and gets the drained badge at p 1. |
-| `banner` (`bellRang`) | 1500 ms | Bell sprite on `(3,17)` swings `+-18 deg` damped (period 500 ms, decay 600 ms); 3 gold rings `rgba(232,200,114,0.6 -> 0)` from the bell at 0/300/600 ms, each to `12T` radius over 1200 ms (`easeOutCubic`), line `0.12T -> 0.02T`; global light transition 3.4 starts. Banner card as today. |
+| `banner` (`bellRang`) | 1500 ms | On each `bell` tile (`MapSites.bells`): the rope swings `+-18 deg` damped (period 500 ms, decay 600 ms) and a bronze shimmer ring `BELL.hi` pulses on the bell's rim (fx draws over the cached bell; the bell body does not move); 3 gold rings `rgba(232,200,114,0.6 -> 0)` from the bell at 0/300/600 ms, each to `12T` radius over 1200 ms (`easeOutCubic`), line `0.12T -> 0.02T`; global light transition 3.4 starts. Banner card as today. |
 | `banner` (others) | as today | Banner card restyled (7.1). |
-| `arrive` (`reinforcementsArrived`) | 850 ms | Each unit, staggered 60 ms: slides in `0.8T` from the nearest map edge (west for the Watch, south for Lantern/Legion), alpha `0 -> 1` over p 0-0.6 (`easeOutCubic`); a warm lantern flare (light r 2.0, k 0.8 -> 0 over 850 ms) at the gate; 3 dust particles per unit. Existing flash/pulse effects are replaced by this. |
+| `arrive` (`reinforcementsArrived`) | 850 ms | Each unit, staggered 60 ms: slides in `0.8T` from the nearest map edge (west for the Watch, south for Lantern/Legion), alpha `0 -> 1` over p 0-0.6 (`easeOutCubic`); a warm lantern flare (light r 2.0, k 0.8 -> 0 over 850 ms) at the gate; 3 dust particles per unit; the wave's portcullis (if any) rises over p 0-0.5 (`easeOutCubic`, drawn by objects, section 10). Existing flash/pulse effects are replaced by this. |
 | `burn` (`bridgeBurned`) | 480 ms | Fire on the bridge tile: 10 flame particles per tile for the step, light r 2.6 k 0.9; bridge art switches to charred at step start; afterwards ambient flames for 6 s (4 particles/s) and embers (1.2 r light) for the rest of the battle. |
 | `seal` (`sealBroken`) | 800 ms | Elian's dashed seal ellipse snaps: 8 cyan link shards outward, ring pulse to `r 2T`, seal light off, halo brightens 0.3 for 400 ms. |
 | `pause` (`duelEnded`) | 600 ms | Duel badges fade over 300 ms; small clash spark between the two. |
@@ -425,21 +443,24 @@ Add a 2.6 rem circular medallion at the left (inline SVG, faction plate shape: r
 
 Reviewers check screenshots at 1280x720 (30 px tiles) and 1920x1080 (46 px), plus the smoke screenshots (`SMOKE_OUT=<dir> npm run smoke`).
 
-1. Every wall reads as raised and impassable: cap + rim, and a face wherever its south neighbour is open. No passable tile has a cap, face or cast shadow, except pillars and rubble drawn per 4.4/4.5.
-2. Decor on passable tiles is flat: luminance within 12 % of its floor, covering at most 35 % of the tile's centre area, no shadows. Banquet cloths do not read as tables; the Wellspring floor has no water.
-3. Water, intact bridge and burned bridge are unambiguous at 30 px.
-4. Barred door (blocked), open door (passable) and broken door (passable) are distinguishable at 30 px without hovering.
+1. Every wall reads as raised and impassable: cap + rim, and a face wherever its south neighbour is open. No passable tile has a cap, face or cast shadow, except low cover (pillars, rubble, tables, crates) drawn per 4.4, 4.5 and section 10, which is clearly lower than a wall.
+2. Decor on passable floor is flat: luminance within 12 % of its floor, covering at most 35 % of the tile's centre area, no shadows. Quay steps read as passable steps down to the water, not as a wall.
+3. Water (canal and reflecting pool), intact bridge and burned bridge are unambiguous at 30 px; the canal's surface band, ripples, reflection streaks and bank line are visible and the canal never merges with the walls.
+4. Barred door (blocked), open door (passable, warm frame and leaf) and broken door (passable) are distinguishable at 30 px without hovering; an open door is easy to find.
+4a. Blocking furniture reads as blocking: braziers (raised lit bowl) and the great bell are never mistaken for floor or cover; the closed portcullis reads as a solid grille and the open one as a raised grille, passable.
+4b. Tables and crates read as low cover (an obstacle you can stand behind), distinct from walls and from rubble.
+4c. Floor texture stays readable on every passable tile at Midnight, including the corridors, the servants' tunnel and the Princess's Tower (`floorCap`); there is no purple or coloured haze over interiors.
 5. Faction is identifiable at 30 px **in greyscale** (desaturate the screenshot): rhombus plate + eared hood + zigzag hem vs ellipse plate + crest + straight hem.
 6. Rank is identifiable at 46 px and guessable at 30 px: axe/spear, glowing blade, staff orb, cape + circlet + double rim.
 7. All seven named characters are identifiable by their mark and initial tab.
-8. Reach, target, hover outline and hover path are clearly visible on the darkest tile (tunnel), the brightest (lit feast hall, brazier plaza) and inside every Domain. Domain fills never look like reach tiles.
+8. Reach, target, hover outline and hover path are clearly visible on the darkest tile (tunnel), the brightest (lit feast hall, brazier plaza), on water-adjacent steps and inside every Domain. Domain fills never look like the blue move tiles.
 9. The damage tooltip is fully visible and unobstructed; banners never overlap it while input is enabled.
 10. Zone labels and object HP badges are at least 10 css px and never darkened.
 11. HP bars and status badges are never covered by decor, lights, other units or Domain upper layers.
 12. No unit is hidden by decoration: units draw above all decor; figure sprites stay inside their tile.
 13. Unit night shade never exceeds 0.38: a unit in the darkest corner still shows its faction colour.
 14. Dawn is visibly greyer than Midnight (same scene side by side), and the change starts with the bell, not before.
-15. Escape exits (Mira `(31,12)`, Elian `(0,10..11)`) are visibly marked; reinforcement gates read as openings.
+15. Escape exits (Mira's east exit, Elian's tunnel exit, wherever `state.map.exits` puts them) are visibly marked; reinforcement gates read as openings.
 16. Spent units are clearly dimmer but keep their faction shape.
 17. Effects leave no residue that implies state, except ash decals (alpha <= 0.25) and charred bridges (true state).
 18. No horizontal or vertical page scroll at 1280x720 and 1920x1080 (smoke test passes).
@@ -540,8 +561,8 @@ draw(input) {
 | WS | Scope | Owns (creates/edits) | Depends on |
 |---|---|---|---|
 | WS0 Foundation (first, small) | tokens, types, settings, sites, noise, ease; renderer skeleton that calls stub modules reproducing today's look (move existing code into the stubs); controller wiring for display era, motion, speed multiplier, visibility pause; `HudCallbacks.onSpeed` + `S` key stub | `palette.ts`, `settings.ts`, `gfx/types.ts`, `gfx/ease.ts`, `gfx/noise.ts`, `gfx/sites.ts`, `renderer.ts`, initial `controller.ts` and `hud.ts` callback lines, stub files for every module below | - |
-| WS1 Terrain & objects | sections 4.1-4.8 (except 4.9), layer 1-3, layer 7 terrain sources | `gfx/terrain.ts`, `gfx/materials.ts`, `gfx/water.ts`, `gfx/objects.ts` | WS0 |
-| WS2 Lighting & overlays | section 3, 4.9, layer 5-6, 8-9, 12-13 | `gfx/lighting.ts`, `gfx/overlays.ts` | WS0 |
+| WS1 Terrain & objects | sections 4.1-4.8 (except 4.9) and 10, layer 1-3, layer 7 terrain sources | `gfx/terrain.ts`, `gfx/materials.ts`, `gfx/water.ts`, `gfx/objects.ts` | WS0 |
+| WS2 Lighting & overlays | section 3 (incl. `floorCap`), 4.9, layer 5-6, 8-9, 12-13 | `gfx/lighting.ts`, `gfx/overlays.ts` | WS0 |
 | WS3 Figures & units | section 5 | `gfx/figures.ts`, `gfx/units.ts`, `gfx/badges.ts` | WS0 |
 | WS4 FX, Domains, animation | section 6, layer 4, 11, 14-15; speed/reduced-motion behaviour | `gfx/particles.ts`, `gfx/fx.ts`, `gfx/domains.ts`, `controller.ts` (after WS0), `animation.ts` (additive only) | WS0; reads `UnitPose` contract with WS3 |
 | WS5 UI polish | section 7 | `styles.ts`, `cards.ts`, `hud.ts` (after WS0), `icons.ts`, `hudModel.ts` (additive only) | WS0 |
@@ -564,16 +585,20 @@ After WS1-WS5 an integrator (or WS0's agent) does one pass on `renderer.ts` only
 - Per frame budget at 46 px: <= 1 terrain blit, <= 40 water tiles, <= 64 light stamps at 256x176, 2 lightmap blits, <= 40 units x 3 `drawImage`, <= 192 particles, <= 20 text draws.
 - No allocation in the hot path: reuse arrays for lights and poses; particles in typed arrays.
 
-## 10. Ideas that would need a geometry change (proposals only, not part of this work)
+## 10. Map additions
 
-1. Real banquet tables in the Feast Hall as impassable or cover terrain (would change Orsa's and Grimm's duel space).
-2. A shallow reflecting pool in the Wellspring Hall (water tiles) around the rite dais; would also block anchor routes.
-3. Crates and carts on the quay as dedicated cover terrain instead of reusing rubble positions.
-4. A bell tile (impassable) in the middle of the Bell Tower, with the rope as an interactable.
-5. A portcullis object in the outer gate gap (x 22..25, y 21) that opens on Second Bell, giving the arrival a physical gate.
-6. Braziers as blocking objects in the inner-gate plaza (currently they sit on the passable pillar piers).
-7. Quay steps down to the canal (a row of `stairs` terrain) so the north bank reads as a real terrace.
-8. A wider (2-tile) canal so reflections and burning bridges have room to read.
+All eight geometry proposals were accepted; a separate geometry pass places them in `src/content` (exact tiles are its call). Renderers find them **by terrain type, object kind and zone** (`gfx/sites.ts`), never by coordinates, and must look right wherever they land. Tile stats come from `TERRAIN` in `src/engine/data.ts`.
+
+| Addition | Data | Stats | Drawn as |
+|---|---|---|---|
+| Banquet tables (Feast Hall) | terrain `table` | low cover, move 2, DEF +1 | Solid dark-wood **table tops** seen from above: top `0.84T x 0.62T` in `TABLE.top` set slightly north (`y 0.14..0.76T`), a 1 px `TABLE.topEdge` lit north/west edge, a short front edge `0.10T` in `TABLE.front` on the south side of the run and a `0.08T` shadow below it. Adjacent table tiles merge into one long table (no seams, edges only on the run's outline). A red runner `TABLE.runner` `0.18T` wide along the table's long axis; on each tile 2 plates (`r 0.07T`, `#d8cfbd` rim), a goblet dot (`#c9a24a`) and, where a candle light site exists (3.2), a candle (`0.04T x 0.10T` white with a `LIGHT.flameCore` tip redrawn in layer 7). Reads as an obstacle you can stand behind, clearly lower than walls (like rubble's low-cover language): no cap, no brick face. |
+| Quay crates | terrain `crates` | low cover, as rubble (move 2, DEF +1) | Two or three **stacked intact crates** per tile (`0.34T` and `0.28T` squares, `CRATE.wood`, `CRATE.dark` outline and diagonal brace, `CRATE.band` corner bands), lit top-left, `0.08T` shadow to the south-east, placed toward the tile's back corners by hash so a unit standing there reads as behind cover. Never broken pieces (that is rubble). |
+| Quay steps | terrain `stairs` | passable like floor (move 1, DEF 0) | Flat stone **steps descending toward the adjacent water** (direction = `MapSites.stairs[].dir`, south for the north bank): 4 treads per tile in `STAIR.tread`, each tread slightly darker toward the water, a 1 px `STAIR.riser` line between treads and a 1 px `STAIR.nosing` highlight on each tread's upper edge. The lowest tread meets the water with the bank line (4.6), no kerb face. No cast shadow and no face that implies a wall. |
+| Braziers (inner-gate piers) | terrain `brazier` | impassable | A **raised iron bowl on three legs**: legs `BRAZIER.legs`, bowl ellipse `0.62T x 0.24T` in `BRAZIER.iron` with a `BRAZIER.rim` rim at `y 0.30T`, glowing coals `BRAZIER.coal` inside, a stone plinth `0.70T` square under it, shadow `0.10T`. Layer 7 draws three layered flame tongues (`#ff5a1f`, `#ffb347`, `#ffe2a0`) rising `0.30-0.45T` with flicker; it is a light source (3.2). It must read as blocking (raised and lit), not as floor. |
+| Great bell (Bell Tower) | terrain `bell` | impassable | A **bronze bell seen from above**: concentric circles (outer lip `r 0.40T` `BELL.dark`, body `r 0.34T` `BELL.bronze`, crown `r 0.14T` `BELL.hi`, a highlight arc top-left), a timber yoke bar across it (`DOOR.woodDark`, `0.12T`), and a **rope** (`BELL.rope`, 2 px) hanging from the yoke to a coil on the nearest floor tile. A soft warm light (3.2) so it stands out in the dark tower. |
+| Reflecting pool (Wellspring Hall) | `water` tiles inside the `wellspringHall` zone (material `pool`) | as water (impassable) | Not the canal style: a **tiled reflecting pool** with a raised stone rim `0.10T` (`POOL.rim`, top highlight `POOL.rimTop`) on every edge that meets floor, a basin of small square tiles (`POOL.deep` grout grid every `T/3` under `POOL.water`), calm surface (no ripples; a slow `0.15` alpha shimmer band crossing every 4 s, static in reduced motion) and a faint rune glow (`POOL.rune` ring or ticks along the inner rim, pulsing `0.7..1.0` over 3 s). Reflects nearby lights like the canal but at half strength. |
+| Wider canal | 2 rows of `water`; bridges become multi-tile `bridge` objects | as before | 4.6: one bright surface band across both rows, kerb on the north bank, bank line on both banks; each bridge drawn as one continuous deck over all its tiles. Rows may shift; nothing assumes a row number. |
+| Outer-gate portcullis | object `gate` (`tiles`, `wave`, `open`); display override `closedGates` | closed: blocks movement | **Closed** (`!open`, or its id is in `overrides.closedGates`): an iron grille across every gate tile: 5 vertical bars `0.08T` (`GATE.iron`, 1 px `GATE.ironHi` left edge), 3 horizontal bars, spiked bottom points, a `0.10T` shadow on the outward side; reads as blocking at 30 px. **Rising**: while the `arrive` step of its `wave` plays, the grille slides up out of the tile over p 0-0.5 (`easeOutCubic`), clipped at the top of the gap. **Open**: only the raised grille's bottom edge (`0.14T` of bars and spikes) at the top of each gate tile plus its shadow; the passage is clearly free. |
 
 ## 11. Prototype shortcuts (do not copy)
 
@@ -582,7 +607,7 @@ The `WIP mock prototype` commit exists to prove the look. Implement from this do
 - `src/ui/proto.ts` is one file mixing terrain, lighting, figures and badges; follow 9.1 instead.
 - Light stamps call `createRadialGradient` per light per frame; use cached stamp sprites (3.1). `levelAt` loops over all lights per unit; memoise per tile per frame.
 - Era comes from `bellEra(state)` (jumps before the bell plays) plus a `?era=` URL hack; Dawn desaturation is a full-screen pass every frame. Use the display era and bake (3.4).
-- Coordinates for braziers, overheads, banners, shelves, carpet, cloths and the bell are hard-coded inline; put them in the `sites.ts` scenario table.
+- Coordinates for braziers, overheads, banners, shelves, carpet, cloths and the bell are hard-coded inline; derive every site in `sites.ts` from terrain and zones (3.2).
 - `figureCache` is a module global that is never evicted on resize; no `spent` sprite variant (spent units only use alpha).
 - Domains still use the old ground code and alpha (conflicts with the reach colour), and are drawn under the darkness at the old strength.
 - No fx, particles, shake, facing updates, HP ghost, bell swing, speed setting or reduced-motion handling beyond static flicker/bob; death and remove still use the old fade.
