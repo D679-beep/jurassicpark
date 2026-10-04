@@ -55,12 +55,12 @@ describe('prologue scenario: structure', () => {
     expect(s.gameOver).toBe(false);
   });
 
-  it('has 11 rebels and 14 loyalists with unique ids on distinct passable tiles', () => {
+  it('has 11 rebels and 13 loyalists with unique ids on distinct passable tiles', () => {
     const s = initial();
     expect(s.units.filter((u) => u.faction === 'rebel')).toHaveLength(11);
-    expect(s.units.filter((u) => u.faction === 'loyalist')).toHaveLength(14);
-    expect(new Set(s.units.map((u) => u.id)).size).toBe(25);
-    expect(new Set(s.units.map((u) => `${u.pos.x},${u.pos.y}`)).size).toBe(25);
+    expect(s.units.filter((u) => u.faction === 'loyalist')).toHaveLength(13);
+    expect(new Set(s.units.map((u) => u.id)).size).toBe(24);
+    expect(new Set(s.units.map((u) => `${u.pos.x},${u.pos.y}`)).size).toBe(24);
   });
 
   it('places every named character with the right faction, rank, statuses and tags', () => {
@@ -101,28 +101,32 @@ describe('prologue scenario: structure', () => {
     );
     expect(wolves.every((u) => u.name === 'Ashen Wolf' && u.faction === 'rebel')).toBe(true);
     const guards = s.units.filter((u) => u.id.startsWith('g-'));
-    expect(guards).toHaveLength(10);
+    expect(guards).toHaveLength(9);
     expect(guards.every((u) => u.name === 'Palace Guard' && u.faction === 'loyalist')).toBe(true);
     expect(guards.filter((u) => u.tags.includes('anchorBreaker')).map((u) => u.id).sort()).toEqual(['g-anchor-1', 'g-anchor-2']);
     expect(get(s, 'g-ante-1').guardZone).toBe('throneHall');
     expect(get(s, 'g-tower-1').guardZone).toBe('princessTower');
     expect(get(s, 'g-bell-1').guardZone).toBe('bellTower');
-    // Throne Hall garrison (balance log): 3 Kindled + 1 Radiant inside, a Kindled on the antechamber.
-    const throne = ['g-throne-1', 'g-throne-2', 'g-throne-3', 'g-throne-4', 'g-ante-1'];
-    expect(throne.map((id) => get(s, id).rank)).toEqual(['kindled', 'kindled', 'kindled', 'radiant', 'kindled']);
+    // Throne Hall garrison (balance log v0.3): 3 Kindled inside, a Soldier on the antechamber, no Radiant.
+    const throne = ['g-throne-1', 'g-throne-2', 'g-throne-3', 'g-ante-1'];
+    expect(throne.map((id) => get(s, id).rank)).toEqual(['kindled', 'kindled', 'kindled', 'soldier']);
     expect(throne.every((id) => get(s, id).guardZone === 'throneHall')).toBe(true);
-    expect(get(s, 'g-throne-4').pos).toEqual({ x: 18, y: 2 });
+    expect(s.units.some((u) => u.id === 'g-throne-4')).toBe(false);
+    // Princess's Tower: two Soldiers.
+    expect(['g-tower-1', 'g-tower-2'].map((id) => get(s, id).rank)).toEqual(['soldier', 'soldier']);
   });
 
-  it('applies the balance-log stat overrides to the duelists and Elian', () => {
+  it('applies the balance-log stat overrides to the duelists, Elian and Mira', () => {
     const s = initial();
     const stats = (id: string) => {
       const u = get(s, id);
       return { hp: u.hp, maxHp: u.maxHp, atk: u.atk, def: u.def, move: u.move };
     };
-    // Grimm: baseline Ascendant with DEF 5. Orsa, the shield: 44 HP, ATK 8, DEF 5.
+    // Grimm: baseline Ascendant with DEF 5. Orsa, the shield: 48 HP, ATK 9, DEF 5.
     expect(stats('grimm')).toEqual({ hp: 40, maxHp: 40, atk: 10, def: 5, move: 5 });
-    expect(stats('orsa')).toEqual({ hp: 44, maxHp: 44, atk: 8, def: 5, move: 5 });
+    expect(stats('orsa')).toEqual({ hp: 48, maxHp: 48, atk: 9, def: 5, move: 5 });
+    // Mira is a Radiant who barely fights back: ATK 4.
+    expect(stats('mira')).toEqual({ hp: 18, maxHp: 18, atk: 4, def: 2, move: 4 });
     // The seal draws on the one it holds: Elian starts at 34 of 40.
     expect(stats('elian')).toEqual({ hp: 34, maxHp: 40, atk: 10, def: 4, move: 5 });
     expect(stats('varek')).toEqual({ hp: 40, maxHp: 40, atk: 10, def: 4, move: 5 });
@@ -157,7 +161,7 @@ describe('prologue scenario: structure', () => {
       ['doorThroneWest', 12],
       ['doorThroneEast', 12],
       ['doorWellNorth', 14],
-      ['doorWellSouth', 14],
+      ['doorWellSouth', 11],
     ]);
     const anchors = s.map.objects.filter((o) => o.kind === 'anchor');
     expect(anchors.map((a) => a.id)).toEqual(['anchorA', 'anchorB', 'anchorC']);
@@ -188,6 +192,53 @@ describe('prologue scenario: structure', () => {
 
   it('tracks all five objectives', () => {
     expect(initial().objectives.map((o) => o.id)).toEqual(['killEmperor', 'killElian', 'imprisonMira', 'seizeBellTower', 'burnBridges']);
+  });
+});
+
+describe('prologue scenario: the Wellspring south door opens a real route (anchorC off the doorway)', () => {
+  const anchorsIntact = (s: GameState): boolean =>
+    s.map.objects.filter((o) => o.kind === 'anchor').every((o) => o.kind === 'anchor' && !o.destroyed && o.hp === o.maxHp);
+  const moveTargets = (s: GameState, unitId: string): string[] =>
+    getLegalActions(s, unitId)
+      .filter((a): a is Extract<Action, { kind: 'move' }> => a.kind === 'move')
+      .map((a) => `${a.to.x},${a.to.y}`);
+
+  it('a rebel on the quay breaks doorWellSouth (16,12) and walks through it into the hall with every anchor intact', () => {
+    // Varek stands on the quay right below the door; the door is down to its last hit point.
+    const s = structuredClone(initial());
+    get(s, 'varek').pos = { x: 16, y: 13 };
+    const door = s.map.objects.find((o) => o.id === 'doorWellSouth');
+    if (!door || door.kind !== 'door') throw new Error('doorWellSouth');
+    door.hp = 1;
+    // While the door stands, (16,12) and everything behind it is out of reach.
+    const before = moveTargets(s, 'varek');
+    expect(before).not.toContain('16,12');
+    expect(before).not.toContain('16,11');
+
+    // Break it with a real attack, then move in the same turn.
+    const r = applyAction(s, { kind: 'attack', unitId: 'varek', targetId: 'doorWellSouth' });
+    const broken = r.state.map.objects.find((o) => o.id === 'doorWellSouth');
+    expect(broken?.kind === 'door' && broken.destroyed).toBe(true);
+    expect(anchorsIntact(r.state)).toBe(true);
+    const after = moveTargets(r.state, 'varek');
+    // Through the doorway (16,12), onto the tile inside it (16,11), and on into the hall.
+    for (const t of ['16,12', '16,11', '17,11', '17,10', '18,10']) expect(after, t).toContain(t);
+    // The anchors themselves stay solid: (15,11) is anchorC, not a floor tile to stand on.
+    expect(after).not.toContain('15,11');
+    const m = applyAction(r.state, { kind: 'move', unitId: 'varek', to: { x: 17, y: 10 } });
+    expect(get(m.state, 'varek').pos).toEqual({ x: 17, y: 10 });
+    expect(m.state.map.zones.wellspringHall!.some((t) => t.x === 17 && t.y === 10)).toBe(true);
+    expect(anchorsIntact(m.state)).toBe(true);
+  });
+
+  it('with only doorWellSouth broken, a Wolf from the inner gate reaches the tile inside it, anchors intact (path costs)', () => {
+    const s = structuredClone(initial());
+    for (const o of s.map.objects) if (o.id === 'doorWellSouth' && o.kind === 'door') o.destroyed = true;
+    expect(anchorsIntact(s)).toBe(true);
+    // (16,17) -> centre bridge -> quay -> (16,12) -> (16,11): one tile further than the door itself.
+    expect(cost(s, 'wolf-k2', [16, 11])).toBe(cost(s, 'wolf-k2', [16, 12]) + 1);
+    // ...and from there the whole hall interior is walkable (beside Elian on the dais at (16,10)).
+    expect(cost(s, 'wolf-k2', [16, 10])).toBe(cost(s, 'wolf-k2', [16, 11]) + 1);
   });
 });
 

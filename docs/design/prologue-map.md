@@ -1,6 +1,6 @@
 # Prologue Level Design: Night of Ashen Lanterns
 
-Status: v0.1, companion to `docs/design/prologue-slice.md` (the binding rules) and `docs/story.md` (prologue section). Played as the **Rebels**. All coordinates are `(x, y)` with x = column from 0 on the left and y = row from 0 at the top. Rectangles are inclusive on both ends. The map is **32 columns x 22 rows**.
+Status: v0.3 balance ("Rebel-favoured", see section 8), companion to `docs/design/prologue-slice.md` (the binding rules) and `docs/story.md` (prologue section). Played as the **Rebels**. All coordinates are `(x, y)` with x = column from 0 on the left and y = row from 0 at the top. Rectangles are inclusive on both ends. The map is **32 columns x 22 rows**.
 
 ## 1. Map
 
@@ -109,22 +109,21 @@ Rank stats are the baseline from the slice spec. `Placed in` names the zone whos
 |---|---|---|---|---|---|
 | `halden` | Emperor Halden | (special) | `(15,2)` | throneHall | tag `noResist`. On the dais. Confront from `(15,3)`, `(14,2)`, `(16,2)` or `(15,1)`. |
 | `elian` | Crown Prince Elian | Ascendant | `(15,10)` | wellspringHall | status `sealed`. On the rite dais. Domain: Sanctuary. **Starts at 34 of 40 HP**: the seal draws on the one it holds (balance log). |
-| `orsa` | Lady Orsa | Ascendant | `(5,4)` | feastHall | status `dueling`. Domain: Bulwark. Adjacent to Grimm. **44 HP, ATK 8, DEF 5**: the shield, not the sword (balance log). |
-| `mira` | Princess Mira | Radiant | `(30,1)` | princessTower | tag `escapee`. Flees to `miraExit`. |
+| `orsa` | Lady Orsa | Ascendant | `(5,4)` | feastHall | status `dueling`. Domain: Bulwark. Adjacent to Grimm. **48 HP, ATK 9, DEF 5**: the shield, but no longer a pushover (balance log). |
+| `mira` | Princess Mira | Radiant | `(30,1)` | princessTower | tag `escapee`. Flees to `miraExit`. **ATK 4**: a princess, not a soldier; her shots sting rather than maul (balance log). |
 | `g-throne-1` | Palace Guard | Kindled | `(14,3)` | throneHall | assigned zone `throneHall` |
 | `g-throne-2` | Palace Guard | Kindled | `(17,3)` | throneHall | assigned zone `throneHall` |
 | `g-throne-3` | Palace Guard | Kindled | `(15,4)` | throneHall | assigned zone `throneHall` |
-| `g-throne-4` | Palace Guard | Radiant | `(18,2)` | throneHall | assigned zone `throneHall`. On the east pillar, range 1-3 over the hall. |
-| `g-ante-1` | Palace Guard | Kindled | `(16,7)` | antechamber | assigned zone `throneHall` (screens the main door) |
+| `g-ante-1` | Palace Guard | Soldier | `(16,7)` | antechamber | assigned zone `throneHall` (screens the main door) |
 | `g-anchor-1` | Palace Guard | Kindled | `(12,7)` | antechamber | tag `anchorBreaker`. Just outside the Wellspring Hall's north wall. |
 | `g-anchor-2` | Palace Guard | Soldier | `(13,7)` | antechamber | tag `anchorBreaker` |
-| `g-tower-1` | Palace Guard | Kindled | `(28,4)` | princessTower | assigned zone `princessTower` |
+| `g-tower-1` | Palace Guard | Soldier | `(28,4)` | princessTower | assigned zone `princessTower` |
 | `g-tower-2` | Palace Guard | Soldier | `(25,6)` | princessTower | assigned zone `princessTower` |
 | `g-bell-1` | Palace Guard | Soldier | `(3,18)` | bellTower | assigned zone `bellTower` |
 
-Totals: 11 rebels (2 Ascendants, 1 Kindled hero, 8 Wolves), 14 loyalists at Midnight (3 Ascendants, Mira, 1 Emperor, 10 guards, of whom 2 are anchor-breakers and 5 hold the Throne Hall).
+Totals: 11 rebels (2 Ascendants, 1 Kindled hero, 8 Wolves), 13 loyalists at Midnight (3 Ascendants, Mira, 1 Emperor, 9 guards, of whom 2 are anchor-breakers and 4 hold the Throne Hall: three Kindled inside and a Soldier on the antechamber).
 
-Per-unit stat overrides (everything else is the rank baseline from the slice spec): Grimm DEF 5; Orsa 44 HP, ATK 8, DEF 5; Elian 34/40 HP at Midnight. See section 8 for why.
+Per-unit stat overrides (everything else is the rank baseline from the slice spec): Grimm DEF 5; Orsa 48 HP, ATK 9, DEF 5; Elian 34/40 HP at Midnight; Mira ATK 4. See section 8 for why.
 
 ## 4. Objects
 
@@ -140,7 +139,7 @@ A barred door sits on its own `=` tile. It is impassable and blocks line of sigh
 | `doorThroneWest` | `(11,3)` | 12 | Side door from the west corridor into the Throne Hall. |
 | `doorThroneEast` | `(20,3)` | 12 | Side door from the east corridor into the Throne Hall. |
 | `doorWellNorth` | `(15,8)` | 14 | Wellspring Hall, from the antechamber. |
-| `doorWellSouth` | `(16,12)` | 14 | Wellspring Hall, from the quay. |
+| `doorWellSouth` | `(16,12)` | 11 | Wellspring Hall, from the quay. Varek (10 to 12 a hit) breaks it with one blow two times in three (balance log). |
 
 Ordinary (unbarred) doors, for reference: `(9,4)` Feast Hall, `(15,6)` Throne Hall, `(11,10)` and `(11,11)` Wellspring Hall west, `(9,10)` and `(9,11)` tunnel mouth, `(26,8)` Princess's Tower, `(5,19)` bell tower.
 
@@ -154,7 +153,7 @@ Three objects with tag `wardAnchor`, 12 HP each, on floor tiles inside `wellspri
 | `anchorB` | `(19,9)` | 12 | 7 to `anchorA`, 6 to `anchorC` |
 | `anchorC` | `(15,11)` | 12 | 5 to `anchorA`, 6 to `anchorB` |
 
-`anchorC` was first drawn at `(16,11)`, the tile directly inside `doorWellSouth` `(16,12)`, which silently blocked the quay door route even after the door was broken. It moved one tile west to `(15,11)`, directly south of Elian, keeping the 7/6/5 spread (balance log).
+`anchorC` was first drawn at `(16,11)`, the tile directly inside `doorWellSouth` `(16,12)`, which silently blocked the quay door route even after the door was broken. It moved one tile west to `(15,11)`, directly south of Elian, keeping the 7/6/5 spread (balance log). An engine-level test pins the fix (`tests/content/prologue.test.ts`, "the Wellspring south door opens a real route"): with all three anchors intact, a rebel on the quay at `(16,13)` breaks `doorWellSouth` with a real attack and, in the same turn, `getLegalActions` offers moves to `(16,12)`, `(16,11)` and on into the hall (`(17,10)`, `(18,10)`), but never onto `anchorC` at `(15,11)`.
 
 ### Bridges
 
@@ -190,24 +189,24 @@ Notes:
 
 Move values from the spec: Soldier 4, Kindled 5, Radiant 4, Ascendant 5. Costs below are real Dijkstra costs on this grid with floor, door, bridge and dais at 1, and rubble and pillar at 2, ignoring units. Rounds are `ceil(cost / move)`. The window is rounds 1 to 12 (Dawn arrives at 13).
 
-**Varek to the Emperor.** `(15,17)` to `(15,3)`, adjacent to Halden, is cost 24, which is 5 rounds for move 5. The cheapest route is center bridge, west along the quay to the corridor mouth `(10,13)`, north up the west corridor to the antechamber, east along it, then through `(15,6)` and into the hall. He passes the tunnel junction `(10,10)` at cost 12 (round 3) and the antechamber at cost 20 (round 4), exactly where the anchor-breakers stand. The east corridor (x = 21) is 2 longer but empty, and it is the line the simulated rushes take. Either way he reaches the Throne Hall door on round 4 and the hall on round 5. Its garrison is five guards (three Kindled and a Radiant inside, a Kindled on the antechamber) and they stand on all four Confront tiles from round 2. Varek is nearly untouchable for them (non-Ascendants deal 1), so the fight is about tempo, not survival: Tempest softens the whole room, then he needs one action to kill a blocker and one more to Confront. If escorts free a tile first, he steps in and Confronts on the same turn. Simulated competent rushes Confront on **round 7** (Varek alone: round 8), with First Bell at round 5 behind him and Second Bell at round 9 ahead. The shortcut through the Wellspring Hall (break `doorWellSouth` and `doorWellNorth`) is cost 16, 4 rounds, but costs 28 HP of door-breaking and leads straight into the anchors, the breakers and the sealed Elian; it is the Elian-first line below.
+**Varek to the Emperor.** `(15,17)` to `(15,3)`, adjacent to Halden, is cost 24, which is 5 rounds for move 5. The cheapest route is center bridge, west along the quay to the corridor mouth `(10,13)`, north up the west corridor to the antechamber, east along it, then through `(15,6)` and into the hall. He passes the tunnel junction `(10,10)` at cost 12 (round 3) and the antechamber at cost 20 (round 4), exactly where the anchor-breakers stand. The east corridor (x = 21) is 2 longer but empty, and it is the line the simulated rushes take. Either way he reaches the Throne Hall door on round 4 and the hall on round 5. Its garrison is four guards (three Kindled inside, a Soldier on the antechamber) and they stand on all four Confront tiles from round 2. Varek is nearly untouchable for them (non-Ascendants deal 1), so the fight is about tempo, not survival: Tempest softens the whole room, then he needs one action to kill a blocker and one more to Confront. If escorts free a tile first, he steps in and Confronts on the same turn. Simulated rushes Confront on **round 6**, Varek alone too (v0.2, with a Radiant on the pillar and a Kindled on the antechamber: round 7, alone round 8), with First Bell at round 5 behind him and Second Bell at round 9 ahead. The shortcut through the Wellspring Hall (break `doorWellSouth` and `doorWellNorth`) is cost 16, 4 rounds, but costs 25 HP of door-breaking and leads straight into the anchors, the breakers and the sealed Elian; it is the Elian-first line below.
 
-**Orsa is the clock on Grimm.** If Grimm leaves the Feast Hall, Orsa is free and walks `(5,4)` to `(15,4)` at cost 16, which is 4 rounds. Bulwark is a radius-3 diamond and the four tiles from which Varek can Confront Halden are all within 3 of `(15,4)`, so a Bulwark there makes the Confront impossible for 3 rounds, and a free Orsa (ATK 8, +50% against non-Ascendants) kills Kaela in two hits. So the duel has to hold, and it now can. Both duelists take 3 a round; Orsa (DEF 5) hits Grimm (DEF 5) for 3 to 5, 1 to 3 when he stands on a pillar (`(3,3)`, `(6,3)`, `(3,5)`, `(6,5)`, +2 DEF); Grimm hits her for 5 to 7, 3 to 5 on a pillar. The options:
+**Orsa is the clock on Grimm.** If Grimm leaves the Feast Hall, Orsa is free and walks `(5,4)` to `(15,4)` at cost 16, which is 4 rounds. Bulwark is a radius-3 diamond and the four tiles from which Varek can Confront Halden are all within 3 of `(15,4)`, so a Bulwark there makes the Confront impossible for 3 rounds, and a free Orsa (ATK 9, +50% against non-Ascendants: 10 to 13 a hit on Kaela) kills Kaela in two hits. So the duel has to hold, and it can, but it is a real fight. Both duelists take 3 a round; Orsa (48 HP, ATK 9, DEF 5) hits Grimm (DEF 5) for 4 to 6, 2 to 4 when he stands on a pillar (`(3,3)`, `(6,3)`, `(3,5)`, `(6,5)`, +2 DEF); Grimm hits her for 5 to 7, 3 to 5 on a pillar. The options:
 
-- *Leave him to auto-duel* (Grimm never acts): he lasts to about **round 6 to 7**, so Orsa walks free around round 7 and reaches the throne around round 10. A quick rush is already done by then; a slow plan is not (sims: the Elian-first sweep drops from 60% to 10% wins).
-- *Fight back from cover*: Grimm on a pillar trading blows outlasts her; Orsa falls around **round 7** with Grimm on about 10 of 40 HP, and Grimm is then free (Pyre unspent) to help.
+- *Leave him to auto-duel* (Grimm never acts): he lasts to about **round 6**, so Orsa walks free around round 6 or 7 and reaches the throne around round 10. A quick rush is already done by then; a slow plan is not (sims: the Elian-first sweep drops from 92% to 46% wins).
+- *Fight back from cover*: Grimm on a pillar trading blows usually outlasts her, but not always: Orsa falls around **round 7** with Grimm on about 4 of 40 HP. Grimm wins about 60% of duels fought on their own (`duelOnly`) and about 80% of the duels that are decided inside the simulated plans; when he wins he is free (Pyre unspent) to help, when he loses Orsa is free with little HP left.
 - *Help him*: Wolves may walk into the Feast Hall and hit Orsa (1 damage each; she may only strike Grimm while the duel holds), which shortens it a little. Pyre (4 a round to her, twice) is a finisher; using it early Drains Grimm (-2 ATK) for the rest of the duel.
 - *Pull him out*: ends the duel at once and frees Orsa with most of her HP. Only worth it once the Confront is done.
 
-**Mira and Kaela.** Mira (move 4) leaves `(30,1)`, walks down through the tower's zigzag (cost 17 to the door `(26,8)`, 5 rounds), crosses the east court, and exits at `(31,12)` at total cost 26, which is **7 rounds**; she can leave on the AI phase of round 7. She also stalls if Kaela's threat range covers her path. Kaela (move 5) from `(17,18)` reaches `(26,13)` on the north bank at cost 14 (3 rounds) and the tower door `(26,9)` at cost 18 (4 rounds), so by the end of round 4 she is outside the door while Mira is still one step inside it. Slack is about 3 rounds. It disappears if Kaela is diverted: if Mira clears the door in round 5, she still needs 9 more tiles. To soften Mira to 50% HP (9 of 18) takes 2 to 3 Kaela hits (4 to 6 damage each against DEF 2), then Capture. **Keep the Wolves off Mira**: a Wolf hit can kill her, which fails the objective, and only Kaela's hits are floored at 1 HP (a Wolf can safely land one hit while she is above half and no roll can kill her). The two tower guards (Kindled `(28,4)`, Soldier `(25,6)`) make the climb a real fight, and Kaela dying is a defeat, so she cannot simply dive in. A Wolf standing on `(26,9)` plugs the tower's only door and keeps Mira inside, but a plugged Mira also keeps the battle going past the Confront (it only ends when her fate is sealed or at Dawn), and the Dawn Lantern knights then come for Kaela. Sims: Kaela plus two Wolves captures Mira in about half of runs; otherwise she gets out around round 9.
+**Mira and Kaela.** Mira (move 4) leaves `(30,1)`, walks down through the tower's zigzag (cost 17 to the door `(26,8)`, 5 rounds), crosses the east court, and exits at `(31,12)` at total cost 26, which is **7 rounds**; she can leave on the AI phase of round 7. She also stalls if Kaela's threat range covers her path. Kaela (move 5) from `(17,18)` reaches `(26,13)` on the north bank at cost 14 (3 rounds) and the tower door `(26,9)` at cost 18 (4 rounds), so by the end of round 4 she is outside the door while Mira is still one step inside it. Slack is about 3 rounds. It disappears if Kaela is diverted: if Mira clears the door in round 5, she still needs 9 more tiles. To soften Mira to 50% HP (9 of 18) takes 2 to 3 Kaela hits (4 to 6 damage each against DEF 2), then Capture. **Keep the Wolves off Mira**: a Wolf hit can kill her, which fails the objective, and only Kaela's hits are floored at 1 HP (a Wolf can safely land one hit while she is above half and no roll can kill her). The two tower guards (Soldiers at `(28,4)` and `(25,6)`) and Mira's own shots (ATK 4: 2 to 4 a hit on Kaela) make the climb a fight, and Kaela dying is a defeat, so she cannot simply dive in. A Wolf standing on `(26,9)` plugs the tower's only door and keeps Mira inside, but a plugged Mira also keeps the battle going past the Confront (it only ends when her fate is sealed or at Dawn), and the Dawn Lantern knights then come for Kaela. Sims: Kaela plus two Wolves now captures Mira in nearly every run (24 of 24 in `varekRush`, 22 to 24 of 24 in the sweeps), usually on round 7; Kaela alone with one escort and the door plug (`varekSolo`) gets her in 17 of 24, and when she fails Mira is out around round 9.
 
-**Elian.** The seal breaks at Second Bell (round 9, or 11 with the bell tower) at the latest. The two anchor-breakers start in the antechamber and need cost 7 to reach `(12,10)` inside the hall (2 rounds), so left alone they open `anchorA` around round 3, `anchorC` around round 4 and `anchorB` around round 5, freeing Elian around round 5 or 6; he is out of the tunnel by **round 7**. After the seal breaks Elian needs cost 15 to `(0,10)`, 3 rounds at move 5. The tunnel is 2 lanes wide, so blocking him takes two units standing in `(10,10)` and `(10,11)` or in the two door tiles. Killing him needs an Ascendant: while sealed only Varek or Grimm can hurt him, and once free he heals 5 a round in his Sanctuary while every rebel inside it deals 3 less. He starts the battle at 34 of 40 HP. The working line is **Elian first**: Varek and two Wolves break `doorWellSouth` from the quay on rounds 1 and 2 (it now opens straight into the hall), Varek walks in on round 2 or 3, Tempests the room (Elian and the breakers), and hits the sealed prince until he falls around round 6 or 7. Then he breaks out through `doorWellNorth` onto the antechamber and takes the throne Drained (-2 ATK, -1 move), Confronting around **round 11 or 12**, which is very close to Dawn. Throne-first and then Elian does not work: by the time Varek is back, the seal has broken and Elian is healing and running.
+**Elian.** The seal breaks at Second Bell (round 9, or 11 with the bell tower) at the latest. The two anchor-breakers start in the antechamber and need cost 7 to reach `(12,10)` inside the hall (2 rounds), so left alone they open `anchorA` around round 3, `anchorC` around round 4 and `anchorB` around round 5, freeing Elian around round 5 or 6; he is out of the tunnel by **round 7**. After the seal breaks Elian needs cost 15 to `(0,10)`, 3 rounds at move 5. The tunnel is 2 lanes wide, so blocking him takes two units standing in `(10,10)` and `(10,11)` or in the two door tiles. Killing him needs an Ascendant: while sealed only Varek or Grimm can hurt him, and once free he heals 5 a round in his Sanctuary while every rebel inside it deals 3 less. He starts the battle at 34 of 40 HP. The working line is **Elian first**: Varek breaks `doorWellSouth` (11 HP) from the quay on round 1 two times in three, else on round 2 (it opens straight into the hall), walks in on round 2 or 3, Tempests the room (Elian and the breakers), and hits the sealed prince until he falls around round 6 to 8. Then he breaks out through `doorWellNorth` onto the antechamber and takes the throne Drained (-2 ATK, -1 move), Confronting around **round 10 to 12**, close to Dawn. Throne-first and then Elian does not work: by the time Varek is back, the seal has broken and Elian is healing and running.
 
 **Why the optional objectives are worth the detour**
 
-- **Bell tower** (`bellTower`, one Soldier inside). `wolf-k1` `(14,17)` reaches `(4,19)` at cost 12 (3 rounds), `wolf-s2` `(14,19)` at cost 10 (3 rounds). A Kindled plus a Soldier clear and hold it by the end of round 4, in time to stop First Bell. Cost: two Wolves out of eight for the first four rounds, and they are out of the fight after that. Payoff: every bell comes 2 rounds later, so the window is effectively 14 rounds, and the Second Bell seal break slips to round 11. A quick rush does not need it; the Elian-first sweep does (sims: 60% wins without it, 85% with it; Dawn defeats drop from 6 to 2 in 20).
-- **Burn the canal bridges** (`bridgeCenter`, `bridgeEast`). Each interact is one action by a unit next to the bridge, which costs about a turn of one Wolf. It delays the Second Bell *wave* by 2 rounds (the bell itself, and so the seal break, still ring on time) and lengthens the knights' walk from 26 to 42 cost, so they are about 3 rounds further away. It cuts the rebels' own retreat, so burn each bridge only after Varek (center) and Kaela (east) have crossed. The burner Wolves stranded on the south bank can then walk to the bell tower. It only pays in a long battle: the knights matter when the fight runs past round 10 or Mira is kept bottled up, and the two burners are two fewer blades in the Wellspring Hall (sims: on top of the bell tower it is roughly even, 85% vs 80%).
-- **Keep Orsa pinned.** It costs nothing beyond leaving Grimm in the duel, but Grimm has to be played (see above): fighting back from a pillar wins the duel; doing nothing only holds her to about round 7.
+- **Bell tower** (`bellTower`, one Soldier inside). `wolf-k1` `(14,17)` reaches `(4,19)` at cost 12 (3 rounds), `wolf-s2` `(14,19)` at cost 10 (3 rounds). A Kindled plus a Soldier clear and hold it by the end of round 4, in time to stop First Bell. Cost: two Wolves out of eight for the first four rounds, and they are out of the fight after that. Payoff: every bell comes 2 rounds later, so the window is effectively 14 rounds, and the Second Bell seal break slips to round 11. A quick rush does not need it (it is over by round 7); the Elian-first sweep does: it also holds the City Watch back while Varek fights his way out of the Wellspring Hall (sims, 24 seeds: 92% wins and 20 three-objective wins without it, 100% and 24 with it; over 96 seeds 84% / 80% against 99% / 98%).
+- **Burn the canal bridges** (`bridgeCenter`, `bridgeEast`). Each interact is one action by a unit next to the bridge, which costs about a turn of one Wolf. It delays the Second Bell *wave* by 2 rounds (the bell itself, and so the seal break, still ring on time) and lengthens the knights' walk from 26 to 42 cost, so they are about 3 rounds further away. It cuts the rebels' own retreat, so burn each bridge only after Varek (center) and Kaela (east) have crossed. The burner Wolves stranded on the south bank can then walk to the bell tower. It only pays in a long battle: the knights matter when the fight runs past round 10 or Mira is kept bottled up, and the two burners are two fewer blades in the Wellspring Hall (sims: bell tower plus bridges is 92% / 22 of 24 three-objective wins on the official seeds and 97% / 95% over 96 seeds, clearly above the plain sweep and close to the bell tower alone).
+- **Keep Orsa pinned.** It costs nothing beyond leaving Grimm in the duel, but Grimm has to be played (see above): fighting back from a pillar usually wins the duel; doing nothing only holds her to about round 6.
 
 ## 7. Dialogue
 
@@ -220,15 +219,16 @@ Move values from the spec: Soldier 4, Kindled 5, Radiant 4, Ascendant 5. Costs b
 
 ## 8. Balance log
 
-Tuning is done with the balance simulator in `scripts/sim/`: scripted rebel strategies (greedy one-turn policies that only ever play actions from `getLegalActions`) against the real Loyalist AI (`runAiPhase`), over seeded combat rolls. `npm run sim` prints the table below for the current content (20 seeds per strategy by default, `--seeds N`, `--strategy a,b`, `--runs`, `--trace`). `npm run sim -- --variant v0.1` replays the untuned v0.1 content; `--variant no-anchor`, `no-throne`, `ante-soldier`, `no-duel` and `no-elian` undo one change each (`scripts/sim/variants.ts`). `tests/content/balance.test.ts` pins the headline properties on a few seeds.
+Tuning is done with the balance simulator in `scripts/sim/`: scripted rebel strategies (greedy one-turn policies that only ever play actions from `getLegalActions`) against the real Loyalist AI (`runAiPhase`), over seeded combat rolls. `npm run sim` prints the table for the current content (20 seeds per strategy by default; the tables below use `--seeds 24`; also `--base S`, `--strategy a,b`, `--runs`, `--trace`). Scenario variants live in `scripts/sim/variants.ts`: `--variant undo-orsa` (etc.) undoes one change of the current pass, `--variant v0.2` replays the previous pass, `--variant v0.1` the untuned scenario, and the previous pass's own single-change variants (`no-anchor`, `no-throne`, `ante-soldier`, `no-duel`, `no-elian`) now apply on top of v0.2. `tests/content/balance.test.ts` pins the headline properties on a few seeds.
 
-Only content changed: unit stats, the Throne Hall garrison and one anchor tile. The engine rules, the AI and the bell schedule (5 / 9 / 13) are untouched.
+Columns: Confront = mean round of the Confront in the runs that got one. Elian K/E = killed/escaped. Mira C/E/D = captured/escaped/dead. Both = runs that killed Elian and captured Mira. All 3 = runs that did that **and** won. Losses = mean rebel units lost. Grimm dead / Orsa dead = runs in which they died (mean round). Duel G/O = Feast Hall duels won by Grimm / by Orsa (the other duelist died while the duel held); duels still going when the battle ended, or ended by Grimm walking out, count for neither.
 
 ### Strategies
 
 | Strategy | Plan |
 |---|---|
 | `endTurn` | End the turn every round. |
+| `duelOnly` | Probe: only Grimm plays, fighting the duel from the pillars; every other rebel ends its turn. Measures the duel on its own. |
 | `charge` | Every unit, Grimm included (which ends the duel), runs at the throne and hits whatever is in reach. |
 | `chargePinned` | The same, but Grimm stays and fights the duel. |
 | `varekRush` | Varek + 6 Wolves to the throne; Grimm fights from the pillars; Kaela + `wolf-k3` to Mira, `wolf-s3` plugs the tower door. |
@@ -242,11 +242,77 @@ Only content changed: unit stats, the Throne Hall garrison and one anchor tile. 
 | `sweepGrimmIdle` | `fullSweep` with Grimm left to auto-duel. |
 | `sweepThroneFirst` | Throne first, then Varek goes for Elian; 3 Wolves kill the breakers and bar the west door. |
 
-### Before (v0.1) and after, 20 seeds each
+### v0.3 "Rebel-favoured" (current)
+
+Goal of this pass (confirmed with the user): tilt the battle toward the Rebels. Doing nothing still loses; the Varek rush wins reliably (95%+); the full three-objective plan wins about 80 to 90% of the time and mostly with all three objectives; the bell tower and the bridges clearly help; a careless charge can still lose but less harshly (about 15 to 35%, with Grimm pinned doing better); and the duel is no longer a guaranteed Grimm win when he fights back (about 60 to 80%), while an idle Grimm still loses it.
+
+Only content changed: unit stats, guard ranks, one guard removed and one door's HP. The engine rules, the AI, the bell schedule (5 / 9 / 13), the Ascendant damage rules, the objectives and outcomes, Elian's 34/40 HP, the one-way duel exit and the bridges-delay-the-wave rule are untouched.
+
+#### Before (v0.2) and after (v0.3), 24 seeds each
+
+Same seeds for both (`npm run sim -- --seeds 24` and `--variant v0.2 --seeds 24`). Each cell is v0.2 → v0.3.
+
+| Strategy | Win | Confront | Elian K/E | Mira C/E/D | Both | All 3 | Losses | Grimm dead | Orsa dead | Duel G/O |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `endTurn` | 0% → 0% | - | 0/24 → 0/24 | 0/24/0 → 0/24/0 | 0 → 0 | 0 → 0 | 1.0 → 1.0 | 24 (r6.7) → 24 (r6.0) | 0 → 0 | 0/24 → 0/24 |
+| `duelOnly` | 0% → 0% | - | 0/24 → 0/24 | 0/24/0 → 0/24/0 | 0 → 0 | 0 → 0 | 2.0 → 1.5 | 0 → 12 (r7.6) | 24 (r6.8) → 19 (r7.2) | **24/0 → 14/10** |
+| `charge` | **0% → 25%** | 6.0 → 6.0 | 0/0 → 0/6 | 0/0/0 → 0/6/0 | 0 → 0 | 0 → 0 | 1.5 → 1.6 | 0 → 0 | 0 → 6 (r8.0) | - |
+| `chargePinned` | 46% → 100% | 6.0 → 6.0 | 0/11 → 0/24 | 0/16/0 → 0/24/0 | 0 → 0 | 0 → 0 | 2.5 → 2.5 | 0 → 11 (r7.3) | 18 (r6.8) → 18 (r7.4) | 18/0 → 13/11 |
+| `varekRush` | 100% → 100% | 7.0 → 6.0 | 0/24 → 0/24 | 9/15/0 → 24/0/0 | 0 → 0 | 0 → 0 | 1.3 → 0.0 | 0 → 0 | 22 (r6.9) → 13 (r7.0) | 22/0 → 13/0 |
+| `rushGrimmIdle` | 100% → 100% | 7.0 → 6.0 | 0/24 → 0/24 | 12/12/0 → 24/0/0 | 0 → 0 | 0 → 0 | 2.1 → 1.0 | 21 (r6.5) → 24 (r5.8) | 0 → 0 | 0/21 → 0/24 |
+| `grimmHelped` | 96% → 100% | 7.0 → 6.0 | 0/23 → 0/24 | 9/14/0 → 23/1/0 | 0 → 0 | 0 → 0 | 1.0 → 0.2 | 0 → 4 (r7.5) | 24 (r6.8) → 22 (r7.1) | 24/0 → 20/4 |
+| `varekSolo` | 96% → 100% | 8.0 → 6.0 | 0/24 → 0/24 | 8/15/0 → 17/7/0 | 0 → 0 | 0 → 0 | 0.7 → 0.2 | 0 → 5 (r7.4) | 24 (r6.9) → 15 (r7.1) | 24/0 → 14/5 |
+| `bonusRush` | 100% → 100% | 7.0 → 6.0 | 0/24 → 0/24 | 12/12/0 → 24/0/0 | 0 → 0 | 0 → 0 | 1.0 → 0.0 | 0 → 0 | 24 (r6.9) → 17 (r7.0) | 24/0 → 17/0 |
+| `fullSweep` | **63% → 92%** | 11.7 → 10.9 | 24/0 → 24/0 | 12/11/0 → 22/2/0 | 12 → 22 | **8 → 20** | 2.4 → 1.3 | 0 → 4 (r7.8) | 24 (r6.8) → 23 (r7.2) | 24/0 → 20/4 |
+| `sweepBell` | **88% → 100%** | 12.8 → 11.5 | 24/0 → 24/0 | 13/10/0 → 24/0/0 | 13 → 24 | **11 → 24** | 2.9 → 1.6 | 0 → 3 (r8.3) | 24 (r6.8) → 24 (r7.2) | 24/0 → 22/2 |
+| `sweepBonuses` | **83% → 92%** | 12.2 → 11.5 | 24/0 → 24/0 | 7/17/0 → 24/0/0 | 7 → 24 | **5 → 22** | 2.6 → 1.7 | 0 → 6 (r8.2) | 24 (r6.9) → 22 (r7.1) | 24/0 → 20/4 |
+| `sweepGrimmIdle` | 13% → 46% | 11.3 → 10.5 | 24/0 → 24/0 | 10/14/0 → 24/0/0 | 10 → 24 | 1 → 11 | 4.8 → 5.0 | 24 (r6.5) → 24 (r5.8) | 0 → 0 | 0/24 → 0/24 |
+| `sweepThroneFirst` | 100% → 100% | 7.0 → 6.0 | 0/24 → 0/24 | 11/13/0 → 24/0/0 | 0 → 0 | 0 → 0 | 2.8 → 1.9 | 0 → 9 (r7.6) | 24 (r6.8) → 20 (r7.3) | 24/0 → 15/9 |
+
+Outcomes in v0.3: every `charge` loss is "Kaela has fallen" (18 of 24); the sweeps' losses are all Dawn (`fullSweep` 2, `sweepBonuses` 2, `sweepGrimmIdle` 13). Doing nothing still lets Elian and Mira out on round 7 (`endTurn`: Elian 7.2, Mira 7.0) and loses at Dawn every time.
+
+Robustness, 96 seeds (four seed bases of 24: `--base 1`, `3`, `5`, `7`): `fullSweep` 84% wins / 80% all three; `sweepBell` 99% / 98%; `sweepBonuses` 97% / 95%; `charge` 26%; `varekRush` 100% with Mira captured in 96 of 96; duels decided in `fullSweep` 63 Grimm / 33 Orsa (66%).
+
+#### Why the scripted Kaela failed to capture Mira, and why the sweep ran into Dawn (v0.2)
+
+- **Mira.** The scripted Kaela calls the hunt off at 40% HP. At the tower door around round 5 she took Mira's own shots (Radiant ATK 6: 4 to 6 a hit, at range) plus the upper tower guard (Kindled: 4 to 6) in the same AI phase, 8 to 12 damage out of 16, which put her under the line in about half the runs; the door-plug Wolf then stands down and Mira walks out around round 9. Escape timing, Mira's HP/DEF and the exit distance were not the problem: Mira's 7-round walk already leaves Kaela about 3 rounds of slack, and probes that lowered Mira's HP or DEF, slowed her, or toughened Kaela either changed nothing or swung the capture rate between 40% and 100% with side effects on the charge (see "Tried and dropped").
+- **Sweep deaths after the capture.** In the long plans Kaela, still hurt and still in the tower after the capture, was finished by the Kindled tower guard ("Kaela has fallen").
+- **Dawn.** The Elian-first line needed two hits on the 14 HP south door (Varek in on round 3), so Elian fell around round 7 to 8 and the Drained Varek reached the throne on round 11 to 12. Some runs also lose a round or two because the greedy script lets Varek chase City Watch kills on his way out of the Wellspring Hall; the bell tower holds the Watch back two rounds, which is part of why it helps the sweep.
+
+#### Changes
+
+1. **Mira ATK 6 → 4.** Her shots now do 2 to 4 to Kaela, so the hunt no longer breaks Kaela at the tower door. Undo (`undo-mira`): Mira captured in `varekRush` 24 → 8 of 24; `fullSweep` all three 20 → 9 (wins 92% → 83%); `sweepBell` all three 24 → 8; `varekSolo` wins 100% → 83%.
+2. **`g-tower-1` (28,4) Kindled → Soldier.** Kaela survives the tower after the capture in the long plans. Undo (`undo-tower`): `fullSweep` 92% → 71% (all three 20 → 15), `sweepBell` 100% → 67% (24 → 16); rushes unchanged.
+3. **`doorWellSouth` 14 → 11 HP.** Varek (10 to 12 a hit) breaks it on round 1 two times in three, so the Elian-first line is about one round faster (Confront 11.8 → 10.9) and the sweep has a round of slack before Dawn, but not two. Undo (`undo-south-door`): `fullSweep` 92% → 63% (all three 20 → 15), `sweepBell` 100% → 92%, `sweepBonuses` 92% → 83%, `sweepGrimmIdle` 46% → 33%. In a probe at 10 HP (always one blow) the plain sweep won 24 of 24 and the bell tower no longer helped.
+4. **Throne Hall: the Radiant `g-throne-4` on the pillar (18,2) is gone, and `g-ante-1` is a Soldier again.** The all-in charge was a guaranteed loss because Kaela, walking in with the pack, was focus-fired in the hall. Both changes are needed: each alone leaves `charge` at 0%. Undo the Radiant (`undo-radiant`): `charge` 25% → 0%, `chargePinned` 100% → 54%, `varekRush` Confront 6.0 → 6.8, `varekSolo` round 6 → 8, `fullSweep` 92% → 75%. Undo the antechamber Soldier (`undo-ante`): `charge` → 0%, `chargePinned` → 92%, `fullSweep` → 75%. Undo both (`undo-throne`): `charge` 0%, `chargePinned` 46%, `fullSweep` 71% (all three 15). The charge is knife-edge here: with any extra guard rank in the hall it is 0%, with the antechamber Soldier and the Kindled `g-throne-3` also a Soldier it is about 90%.
+5. **Orsa 44 HP / ATK 8 → 48 HP / ATK 9 (DEF 5 unchanged).** At ATK 8 her blows on a pillared Grimm were floored at 1 to 3, so Grimm won every duel he fought (24 of 24 alone, 180 of 180 in v0.2's plans). At ATK 9 they are 2 to 4, and the duel is a real fight: Grimm wins 14 of 24 alone (30 of 48 over 48 seeds) and about 80% of the duels decided inside the plans (154 Grimm / 39 Orsa across the fighting strategies, 24 seeds; 66% in `fullSweep` over 96 seeds). The HP went up only a little to compensate. A freed Orsa now hits Kaela for 10 to 13, which keeps the careless charge honest, and an idle Grimm falls a little earlier (round 6.7 → 6.0), so pinning her matters more. Undo (`undo-orsa`): `duelOnly` 14/10 → 24/0, `chargePinned` duels 13/11 → 24/0, `charge` 25% → 33%, `sweepGrimmIdle` 46% → 63%, idle Grimm death round 6.0 → 6.7.
+
+Tried and dropped: `doorWellNorth` 14 → 10 or 8 (within noise: `fullSweep` 92% → 88% on the official seeds, 84% → 87% over 96); Kaela 20 HP and/or DEF 3 (Mira capture went to 100% at once and the charge swung between 0% and 70% depending on the garrison); Elian DEF 3 (in a probe it made the sweep worse, 54%, through the scripted Varek's detours); a smaller City Watch (noise in a probe, 92% → 75%); Orsa 56 to 60 HP at ATK 8 (the duel slid from 62% to 27% Grimm without making a free Orsa any more dangerous).
+
+#### The bonuses in a shorter plan (metric: `bonusRush` against `varekRush`)
+
+Metric: Mira capture rate, rebel losses and Confront round of `bonusRush` (4 Wolves on the bell tower and both bridges, 2 escorts) against `varekRush` (6 escorts), same seeds. Result: **no measurable difference** (24 seeds: Mira 24/24 both, losses 0.0 both, Confront round 6 both; 96 seeds: Mira 94 vs 96 of 96, both 100% wins). This target was **not met** for the rush. The reason is structural: the rush is over by round 7 (Mira captured on round 7, Elian out on round 7), while the earliest thing the bonuses touch is the First Bell City Watch, which spawns on round 5 at the west gate and needs about 4 rounds to reach the antechamber, and the Second Bell wave (round 9). With the bell schedule fixed at 5 / 9 / 13 and the bonuses' effects fixed by the rules, no content change found in this pass made a sub-8-round plan depend on them. They do help every plan that runs past round 9, which is every plan that goes for Elian: plain sweep 92% / 20 three-objective wins, with the bell tower 100% / 24, with the bell tower and both bridges 92% / 22 (96 seeds: 84% / 80%, 99% / 98%, 97% / 95%), and leaving Grimm idle costs the sweep half its wins (46%).
+
+#### Remaining concerns
+
+- **Recommend a human playtest before more tuning.** The sims are scripted greedy players; human play will differ most in the throne room and in the Mira hunt. Worth checking: does the quick rush feel too easy (the sims win it every time, Confront on round 6, almost no losses)? Is the Elian-first line tight but fair? Does the duel feel like a fight now? Is walking Kaela into the Throne Hall punished hard enough?
+- **The quick rush is now trivial in the sims** (100%, round 6, Mira always captured). That is the requested Rebel tilt, but if playtesters find it flat, the next knobs are `g-ante-1` back to Kindled (but that alone takes the charge back to 0%) or Mira ATK 5.
+- **The bonuses do nothing for a rush** (see above). Making them matter there would need an earlier First Bell or a stronger bonus effect, both rule changes outside this pass.
+- **The charge is knife-edge** on the Throne Hall garrison (0% with one more guard rank, about 70 to 90% with one fewer). 25% on the official seeds, 26% over 96 seeds. And with Grimm pinned (`chargePinned`) a careless charge now always wins.
+- **The duel percentage depends on how you count**: about 60% when fought alone, about 80% of the duels that are decided inside the plans, because quick plans end before a long duel is decided. Orsa ATK is the lever with teeth (ATK 8 floors her pillar damage at 1 to 3); HP is the fine knob.
+- **Mira is now nearly certain** when Kaela brings two Wolves and the door plug; she still escapes in 7 of 24 `varekSolo` runs (one escort). A human Kaela who does not stand down at 40% HP may find her easier still.
+- **Scripted Varek's detours.** Some sweep losses to Dawn come from the greedy script chasing City Watch kills on the way out of the Wellspring Hall, not from a real lack of time; a human should do better, so the sweep is probably easier in play than 84 to 92%.
+- The sims only cover scripted greedy players. Numbers are for comparing variants, not promises about human play.
+
+### Previous pass: v0.1 → v0.2
+
+Reproduce with `--variant v0.2 --seeds 20` (and `--variant v0.1`). The single-change variants below (`no-anchor`, `no-throne`, `ante-soldier`, `no-duel`, `no-elian`) apply on top of v0.2.
+
+#### Before (v0.1) and after (v0.2), 20 seeds each
 
 Confront = mean round of the Confront in the runs that got one. Elian K/E = killed/escaped; Mira C/E = captured/escaped (no run killed her). Both = runs that killed Elian and captured Mira. Grimm = runs in which Grimm died (mean round).
 
-| Strategy | Win v0.1 | Win now | Confront v0.1 | Confront now | Elian K/E v0.1 | Elian K/E now | Mira C/E v0.1 | Mira C/E now | Both v0.1 | Both now | Grimm v0.1 | Grimm now |
+| Strategy | Win v0.1 | Win v0.2 | Confront v0.1 | Confront v0.2 | Elian K/E v0.1 | Elian K/E v0.2 | Mira C/E v0.1 | Mira C/E v0.2 | Both v0.1 | Both v0.2 | Grimm v0.1 | Grimm v0.2 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `endTurn` | 0% | 0% | - | - | 0/20 | 0/20 | 0/20 | 0/20 | 0 | 0 | 20 (r4.9) | 20 (r6.7) |
 | `charge` | 85% | **0%** | 6.0 | 6.0 | 0/17 | 0/0 | 0/18 | 0/0 | 0 | 0 | 6 (r5.8) | 0 |
@@ -264,14 +330,16 @@ Confront = mean round of the Confront in the runs that got one. Elian K/E = kill
 
 Every loss of `charge` and half of `chargePinned` is "Kaela has fallen"; the sweeps lose to Dawn or to Kaela falling late. Doing nothing about Elian and Mira lets both out on round 7 (`endTurn`: Elian 7.2, Mira 7.0).
 
-### Changes
+Only content changed in that pass: unit stats, the Throne Hall garrison and one anchor tile.
+
+#### Changes (v0.2)
 
 1. **`anchorC` `(16,11)` to `(15,11)`.** It stood on the tile directly inside `doorWellSouth`, so breaking that door led nowhere until the anchor was destroyed too (which frees Elian). Now the quay door is a real (28 HP of doors) shortcut and the way in for an Elian-first plan; the 7/6/5 anchor spread is kept. Undoing it (`no-anchor`): `fullSweep` 60% to 30% wins.
 2. **Throne Hall garrison: `g-throne-3` Soldier to Kindled, new `g-throne-4` Radiant on the pillar `(18,2)`, `g-ante-1` Soldier to Kindled.** In v0.1 every plan Confronted on round 6, the all-in charge won 85% and Kaela could walk with the pack. The hall is now lethal for Kaela and slower for Varek: competent rushes Confront on round 7 (alone: round 8) and the charge loses. Undoing it (`no-throne`): `charge` 0% to 85%, `chargePinned` 50% to 100%, every Confront back to round 6. The antechamber Kindled alone (`ante-soldier`): `chargePinned` 60% to 50%, `fullSweep` 75% to 60%; kept for the pressure it puts on half-careful play.
 3. **Duel: Orsa 44 HP, ATK 8, DEF 5; Grimm DEF 5.** In v0.1 a Grimm left alone died on round 4.9 on average, and fighting back was a coin flip that often ended in a double kill on round 6. Now auto-duel holds Orsa to round 6.5 to 7, Grimm fighting from the pillars wins on round 7 with about 10 HP left (he died in none of the 180 runs where he fights), and a freed Orsa is still the main threat: she lands the killing blow on Kaela in 4 of the first 5 `charge` seeds. Undoing it (`no-duel`): auto-duel death back to round 4.9, `varekRush` loses Grimm in 9 of 20 runs, `charge` wins 25%.
 4. **Elian starts at 34 of 40 HP.** At 40, killing him needs so many Varek turns that the Elian-first sweep ran into Dawn (v0.1: 20%; `no-elian`: 10%). At 34 the sweep is a real gamble: 60% wins, and the bell tower makes it 85%.
 
-### Remaining concerns
+#### Remaining concerns at the time (v0.2)
 
 - The Throne Hall is a Varek-only problem: non-Ascendants deal him 1, so the garrison can only cost him tempo, and escorts save about one round (`varekSolo` round 8 against `varekRush` round 7). A quick rush has 5 to 6 rounds of slack before Dawn, so the bell tower and the bridges only matter in the long sweeps.
 - Fighting the duel from the pillars always wins it. If it should need help, Orsa 48 HP is the next knob.

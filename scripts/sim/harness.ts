@@ -24,6 +24,8 @@ export interface RunResult {
   /** Grimm's HP when Orsa fell (null if she did not, or he was already gone). */
   grimmHpAtOrsaDeath: number | null;
   duelEndedRound: number | null;
+  /** Who won the Feast Hall duel (the other duelist died while it held); null if it ended otherwise or never did. */
+  duelWinner: 'grimm' | 'orsa' | null;
   sealBrokenRound: number | null;
   bellTowerRound: number | null;
   bridgesRound: number | null;
@@ -47,6 +49,9 @@ function track(t: Tracker, events: GameEvent[], s: GameState): void {
           t.r.lost.push(e.unitId);
         }
         if (e.unitId === 'grimm') t.r.grimmDiedRound = t.round;
+        if ((e.unitId === 'grimm' || e.unitId === 'orsa') && t.r.duelEndedRound === null && t.r.duelWinner === null) {
+          t.r.duelWinner = e.unitId === 'grimm' ? 'orsa' : 'grimm';
+        }
         if (e.unitId === 'orsa') {
           t.r.orsaDiedRound = t.round;
           const g = s.units.find((u) => u.id === 'grimm');
@@ -125,6 +130,7 @@ export function runGame(strat: Strategy, seed: number, opts: RunOptions = {}): R
       orsaDiedRound: null,
       grimmHpAtOrsaDeath: null,
       duelEndedRound: null,
+      duelWinner: null,
       sealBrokenRound: null,
       bellTowerRound: null,
       bridgesRound: null,
@@ -162,6 +168,8 @@ export interface Summary {
   miraDead: number;
   miraEscapeMean: number | null;
   bothOptionals: number;
+  /** Victory with Elian killed and Mira captured: all three objectives. */
+  allThree: number;
   lossesMean: number;
   grimmDied: number;
   grimmDiedMean: number | null;
@@ -169,6 +177,9 @@ export interface Summary {
   orsaDiedMean: number | null;
   grimmHpAtOrsaDeath: number | null;
   duelEndMean: number | null;
+  /** Duels won by Grimm / by Orsa (the rest ended with Grimm leaving, or were still going). */
+  duelGrimm: number;
+  duelOrsa: number;
   bellTower: number;
   bridges: number;
   reasons: Record<string, number>;
@@ -197,6 +208,7 @@ export function summarize(name: string, runs: RunResult[]): Summary {
     miraDead: runs.filter((r) => r.mira === 'dead').length,
     miraEscapeMean: mean(pick((r) => (r.mira === 'escaped' ? r.miraRound : null))),
     bothOptionals: runs.filter((r) => r.elian === 'killed' && r.mira === 'captured').length,
+    allThree: runs.filter((r) => r.result === 'victory' && r.elian === 'killed' && r.mira === 'captured').length,
     lossesMean: mean(runs.map((r) => r.rebelLosses)) ?? 0,
     grimmDied: runs.filter((r) => r.grimmDiedRound !== null).length,
     grimmDiedMean: mean(pick((r) => r.grimmDiedRound)),
@@ -204,6 +216,8 @@ export function summarize(name: string, runs: RunResult[]): Summary {
     orsaDiedMean: mean(pick((r) => r.orsaDiedRound)),
     grimmHpAtOrsaDeath: mean(pick((r) => r.grimmHpAtOrsaDeath)),
     duelEndMean: mean(pick((r) => r.duelEndedRound)),
+    duelGrimm: runs.filter((r) => r.duelWinner === 'grimm').length,
+    duelOrsa: runs.filter((r) => r.duelWinner === 'orsa').length,
     bellTower: runs.filter((r) => r.bellTowerRound !== null).length,
     bridges: runs.filter((r) => r.bridgesRound !== null).length,
     reasons,
