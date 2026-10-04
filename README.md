@@ -1,6 +1,6 @@
 # The Lantern Crown
 
-A browser-based, turn-based grid tactics game built with TypeScript, Vite and HTML5 Canvas 2D, with no game engine and no runtime dependencies. The current target is the prologue slice: the Night of Ashen Lanterns coup battle, played as the Rebels against an AI-controlled Loyalist side.
+A browser-based, turn-based grid tactics game built with TypeScript, Vite and HTML5 Canvas 2D, with no game engine and no runtime dependencies. It targets laptop and desktop browsers (roughly 1280×720 up to 1920×1080) with mouse and keyboard; phones are not supported. The current target is the prologue slice: the Night of Ashen Lanterns coup battle, played as the Rebels against an AI-controlled Loyalist side.
 
 ## How to play
 
@@ -27,7 +27,7 @@ You also lose if Varek or Kaela dies.
 
 ## Controls
 
-- Mouse or touch: click or tap a unit to select it, a highlighted tile to move, and an enemy to attack. On touch, the first tap on a target shows the damage forecast and the second tap attacks.
+- Mouse: click a unit to select it, a highlighted tile to move, and an enemy to attack. Hover an enemy to see the damage forecast.
 - Tab / Shift+Tab: select the next / previous ready unit.
 - Esc: clear the selection and dismiss dialogue.
 - E: end your turn.
@@ -41,8 +41,10 @@ npm run dev        # start the dev server
 npm test           # run the unit tests
 npm run typecheck  # tsc --noEmit
 npm run build      # typecheck and build to dist/
-npm run smoke      # build, then play a turn in headless Chromium (Playwright) and save screenshots
+npm run smoke      # build, then play a turn in headless Chromium (Playwright) at 1280×720 and 1920×1080 and save screenshots
 ```
+
+Set `SMOKE_FULL=1` to have the smoke test play to the end of the battle (1280×720 pass only), and `SMOKE_OUT=dir` to choose the screenshot folder (default: `lantern-smoke` in the OS temp dir).
 
 CI (`.github/workflows/ci.yml`) runs typecheck, tests and build on every push and pull request. It does not run the smoke test.
 

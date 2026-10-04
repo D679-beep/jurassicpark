@@ -5,6 +5,7 @@ Status: v0.1, the first build target. Story source: `docs/story.md`.
 ## Decisions
 - **Genre:** turn-based grid tactics.
 - **Stack:** TypeScript, Vite, Vitest, HTML5 Canvas 2D. No game engine, no runtime dependencies.
+- **Target platform:** laptop/desktop browsers, roughly 1280×720 up to 1920×1080, played with mouse and keyboard. Phones and touch are out of scope.
 - **Slice scope:** the prologue coup battle, played as the **Rebels (Kaela)** against an AI-controlled Loyalist side. The engine is side-agnostic: the scenario declares which faction the player controls, so the Loyalist side (Aren) can be added later without engine changes.
 
 ## Architecture
@@ -124,10 +125,12 @@ Goal-driven per unit, evaluated every AI phase:
 ## UI (slice)
 - Canvas rendering of the grid with distinct colors/glyphs per terrain. Units drawn as colored tokens with a letter glyph and an HP bar; Ascendants get a ring. No external art assets required for the slice.
 - Click a player unit to select it: show reachable tiles, then attack targets. Click to move/attack. Buttons for Domain, Interact, Wait, End Turn.
+- Layout: the whole map is visible without page scroll at 1280×720 and up. The board sits on the left at the largest integer tile size that fits; the HUD column is on the right and its text scales with the viewport. Hovering a reachable tile shows the path preview, and hovering an enemy shows the damage forecast.
+- Keyboard shortcuts: Tab / Shift+Tab select the next / previous ready unit, Esc clears the selection, E ends the turn, W waits with the selected unit.
 - HUD: current round, next bell and how many rounds until it, objective list with status, selected unit panel, event log.
 - Active Domains drawn as tinted overlays.
 - Short animation for movement and damage numbers, driven by events.
 - Intro text card before the battle and a result card after.
 
 ## Out of scope for the slice
-Loyalist-side play, war map, campaign acts, save/load UI, audio, sprite art, Sereth's Silence.
+Loyalist-side play, war map, campaign acts, save/load UI, audio, sprite art, Sereth's Silence, phone/touch layouts.
