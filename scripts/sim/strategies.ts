@@ -178,7 +178,7 @@ interface RushOptions {
   plug?: string[];
   /** Wolves that take and hold the bell tower. */
   bellTower?: string[];
-  /** Wolf id -> [bridge id, stand tile, units that must be north of the canal first]. */
+  /** Wolf id -> [bridge id, stand tile (south bank, beside the bridge), units that must be north of the canal first]. */
   burners?: Record<string, [string, Pos, string[]]>;
   /** After the Confront (or with elianFirst, before it) Varek goes after Elian. */
   huntElian?: boolean;
@@ -233,7 +233,8 @@ function rush(o: RushOptions): Strategy {
       if (o.plug?.includes(id) && kaelaGaveUp(s)) return varek ? escort(s, varek.pos, 1, 2, 0.8) : { goals: [] };
       if (o.plug?.includes(id)) return mira && isInZone(s, mira.pos, 'princessTower') ? holdTile(P(26, 9), 0.5) : mira ? escort(s, mira.pos, 1, 2, 0.6) : { goals: [] };
       if (o.bellTower?.includes(id)) {
-        const tiles: Pos[] = [P(2, 18), P(3, 18), P(4, 18), P(2, 19), P(3, 19), P(4, 19)];
+        // The bell tower's floor tiles; the great bell stands on (2,18).
+        const tiles: Pos[] = [P(3, 18), P(4, 18), P(2, 19), P(3, 19), P(4, 19)];
         return { goals: tiles, goalWeight: 5, risk: 0.6 };
       }
       const burn = o.burners?.[id];
@@ -356,8 +357,8 @@ export const sweepAllBonuses = rush({
   wardens: [],
   bellTower: ['wolf-s1', 'wolf-s2'],
   burners: {
-    'wolf-k1': ['bridgeCenter', P(15, 16), ['varek', 'wolf-k2', 'wolf-r1']],
-    'wolf-r2': ['bridgeEast', P(26, 16), ['kaela', 'wolf-k3', 'wolf-s3']],
+    'wolf-k1': ['bridgeCenter', P(15, 17), ['varek', 'wolf-k2', 'wolf-r1']],
+    'wolf-r2': ['bridgeEast', P(26, 17), ['kaela', 'wolf-k3', 'wolf-s3']],
   },
 });
 
@@ -377,8 +378,8 @@ export const bonusRush = rush({
   plug: ['wolf-s3'],
   bellTower: ['wolf-k1', 'wolf-s2'],
   burners: {
-    'wolf-s1': ['bridgeCenter', P(15, 16), ['varek', 'wolf-k2', 'wolf-r1']],
-    'wolf-r2': ['bridgeEast', P(26, 16), ['kaela', 'wolf-k3', 'wolf-s3']],
+    'wolf-s1': ['bridgeCenter', P(15, 17), ['varek', 'wolf-k2', 'wolf-r1']],
+    'wolf-r2': ['bridgeEast', P(26, 17), ['kaela', 'wolf-k3', 'wolf-s3']],
   },
 });
 

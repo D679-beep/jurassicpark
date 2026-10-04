@@ -4,6 +4,7 @@ import {
   createGame,
   findObject,
   getLegalActions,
+  isStandable,
   pathCost,
   waveArrivalRound,
   type Action,
@@ -172,9 +173,21 @@ describe('prologue scenario: structure', () => {
     expect(s.map.exits.map((e) => e.id).sort()).toEqual(['elianExit', 'miraExit']);
     expect(s.map.exits.find((e) => e.id === 'miraExit')!.tiles).toEqual([{ x: 31, y: 12 }]);
     expect(s.map.exits.find((e) => e.id === 'elianExit')!.tiles).toEqual([{ x: 0, y: 10 }, { x: 0, y: 11 }]);
-    // Barred doors sit on door terrain, bridges on bridge terrain.
+    // Barred doors sit on door terrain, bridges on bridge terrain, across the 2-wide canal.
     expect(s.map.terrain[6]![16]).toBe('door');
-    expect(s.map.terrain[15]![15]).toBe('bridge');
+    const tilesOf = (id: string) => {
+      const o = findObject(s, id);
+      return o && (o.kind === 'bridge' || o.kind === 'gate') ? o.tiles.map((t): [number, number] => [t.x, t.y]) : null;
+    };
+    expect(tilesOf('bridgeWest')).toEqual([[6, 15], [6, 16]]);
+    expect(tilesOf('bridgeCenter')).toEqual([[15, 15], [14, 16], [15, 16], [16, 16]]);
+    expect(tilesOf('bridgeEast')).toEqual([[26, 15], [26, 16]]);
+    for (const id of ['bridgeWest', 'bridgeCenter', 'bridgeEast']) {
+      for (const [x, y] of tilesOf(id)!) expect(s.map.terrain[y]![x], `${id} (${x},${y})`).toBe('bridge');
+    }
+    // The outer-gate portcullis: closed, over the gap in the south wall, opened by the Dawn Lantern wave.
+    expect(findObject(s, 'outerGate')).toMatchObject({ kind: 'gate', wave: 'dawnLantern', open: false });
+    expect(tilesOf('outerGate')).toEqual([[22, 21], [23, 21], [24, 21], [25, 21]]);
   });
 
   it('schedules the three waves on the default bells, with the designed spawn tiles', () => {
@@ -192,6 +205,107 @@ describe('prologue scenario: structure', () => {
 
   it('tracks all five objectives', () => {
     expect(initial().objectives.map((o) => o.id)).toEqual(['killEmperor', 'killElian', 'imprisonMira', 'seizeBellTower', 'burnBridges']);
+  });
+});
+
+describe('prologue scenario: v0.4 map additions', () => {
+  const s = initial();
+  const t = (x: number, y: number) => s.map.terrain[y]![x];
+  const tilesOf = (terrain: string): string[] => {
+    const out: string[] = [];
+    s.map.terrain.forEach((row, y) => row.forEach((k, x) => k === terrain && out.push(`${x},${y}`)));
+    return out;
+  };
+  const unitTiles = new Set(s.units.map((u) => `${u.pos.x},${u.pos.y}`));
+
+  it('lays banquet tables along the Feast Hall walls, clear of the duel, the pillars and the door', () => {
+    const tables = tilesOf('table');
+    expect(tables).toEqual([2, 3, 4, 5, 6, 7].map((x) => `${x},1`).concat([2, 3, 4, 5, 6, 7].map((x) => `${x},7`)));
+    expect(tables.every((k) => !unitTiles.has(k))).toBe(true);
+    // The duel's middle rows (y 2..6), the pillars and the door lane stay as they were.
+    for (const [x, y] of [[3, 3], [6, 3], [3, 5], [6, 5]] as const) expect(t(x, y)).toBe('pillar');
+    for (let x = 1; x <= 8; x++) expect(t(x, 4)).not.toBe('table');
+    expect(t(9, 4)).toBe('door');
+  });
+
+  it('puts a two-tile reflecting pool east of the rite dais that leaves every anchor and door route open', () => {
+    expect(t(17, 10)).toBe('water');
+    expect(t(18, 10)).toBe('water');
+    expect(tilesOf('water').filter((k) => !k.endsWith(',15') && !k.endsWith(',16'))).toEqual(['17,10', '18,10']);
+    // Every anchor keeps a standable neighbour inside the hall (melee can reach it).
+    for (const id of ['anchorA', 'anchorB', 'anchorC']) {
+      const o = findObject(s, id);
+      if (!o || o.kind !== 'anchor') throw new Error(id);
+      const around = [[0, -1], [1, 0], [0, 1], [-1, 0]].map(([dx, dy]) => ({ x: o.pos.x + dx!, y: o.pos.y + dy! }));
+      expect(around.some((p) => isStandable(s, p) && s.map.zones.wellspringHall!.some((z) => z.x === p.x && z.y === p.y)), id).toBe(true);
+    }
+    // The tiles just inside the four Wellspring doors are untouched.
+    for (const [x, y] of [[12, 10], [12, 11], [15, 9], [16, 11]] as const) expect(t(x, y)).toBe('floor');
+    // A breaker from the antechamber still reaches each anchor's side at the old cost.
+    expect(cost(s, 'g-anchor-1', [12, 10])).toBe(7);
+    expect(cost(s, 'g-anchor-1', [18, 9])).toBe(14);
+  });
+
+  it('swaps the quay rubble for crates (same stats) and keeps the other rubble', () => {
+    expect(tilesOf('crates')).toEqual(['14,13', '7,14', '18,14', '24,14']);
+    expect(tilesOf('rubble')).toEqual(['29,11', '27,12', '10,17', '21,17', '9,18', '22,19']);
+  });
+
+  it('adds quay steps on the south row of the quay, beside the bridges', () => {
+    expect(tilesOf('stairs')).toEqual(['5,14', '14,14', '16,14', '25,14', '27,14']);
+  });
+
+  it('hangs the great bell in the bell tower; the tower can still be cleared and seized', () => {
+    expect(t(2, 18)).toBe('bell');
+    expect(isStandable(s, { x: 2, y: 18 })).toBe(false);
+    // The guard on (3,18) can be reached from (4,18) and (3,19).
+    expect(cost(s, 'wolf-k1', [4, 18])).toBe(13);
+    expect(cost(s, 'wolf-s2', [3, 19])).toBe(11);
+    // A Wolf in the tower and no guard: ending the turn seizes it.
+    const held = structuredClone(s);
+    held.units = held.units.filter((u) => u.id !== 'g-bell-1');
+    get(held, 'wolf-s2').pos = { x: 3, y: 18 };
+    const after = applyAction(held, { kind: 'endTurn' }).state;
+    expect(after.modifiers.bellTowerSeized).toBe(true);
+    expect(after.bells.map((b) => b.round)).toEqual([7, 11, 15]);
+  });
+
+  it('turns the plaza piers into braziers at the corners of the shrunken inner gate (y 17..20)', () => {
+    expect(tilesOf('brazier')).toEqual(['12,17', '19,17', '12,20', '19,20']);
+    expect(tilesOf('pillar').some((k) => Number(k.split(',')[1]) >= 15)).toBe(false);
+    const gate = s.map.zones.innerGate!;
+    expect(gate).toHaveLength(32);
+    expect(Math.min(...gate.map((p) => p.y))).toBe(17);
+    expect(Math.max(...gate.map((p) => p.y))).toBe(20);
+    expect(tilesOf('brazier').every((k) => !unitTiles.has(k))).toBe(true);
+  });
+
+  it('makes the canal two tiles wide, wall to wall, crossed only by the bridges', () => {
+    for (const y of [15, 16]) {
+      expect(t(0, y)).toBe('wall');
+      expect(t(31, y)).toBe('wall');
+      for (let x = 1; x <= 30; x++) expect(['water', 'bridge'], `(${x},${y})`).toContain(t(x, y));
+    }
+    expect(tilesOf('bridge')).toEqual(['6,15', '15,15', '26,15', '6,16', '14,16', '15,16', '16,16', '26,16']);
+    // A Radiant on the south bank still reaches the quay's south row (range 3) across it.
+    const r = structuredClone(s);
+    get(r, 'wolf-r1').pos = { x: 18, y: 17 };
+    get(r, 'g-tower-1').pos = { x: 18, y: 14 };
+    expect(getLegalActions(r, 'wolf-r1')).toContainEqual({ kind: 'attack', unitId: 'wolf-r1', targetId: 'g-tower-1' });
+  });
+
+  it('keeps the outer-gate portcullis shut until the Dawn Lantern Knights arrive on it at Second Bell', () => {
+    const scout = withWaveScout(s, 'cityWatch', [24, 20]);
+    // Closed: nobody can step into the gateway, from either side.
+    expect(isStandable(s, { x: 23, y: 21 })).toBe(false);
+    expect(pathCost(scout, 'watch-1', { x: 23, y: 21 }, { ignoreUnits: true, ignoreMoveLimit: true })).toBeNull();
+    expect(pathCost(s, 'kaela', { x: 22, y: 21 }, { ignoreUnits: true, ignoreMoveLimit: true })).toBeNull();
+    let st = s;
+    while (st.round < 9) st = applyAction(st, { kind: 'endTurn' }).state;
+    const g = findObject(st, 'outerGate');
+    expect(g?.kind === 'gate' && g.open).toBe(true);
+    const knights = st.units.filter((u) => u.id.startsWith('lantern-')).map((u) => `${u.id}@${u.pos.x},${u.pos.y}`);
+    expect(knights).toEqual(['lantern-1@24,20', 'lantern-2@23,20', 'lantern-3@22,21', 'lantern-4@25,21', 'lantern-5@23,21', 'lantern-6@24,21']);
   });
 });
 
@@ -221,13 +335,16 @@ describe('prologue scenario: the Wellspring south door opens a real route (ancho
     expect(broken?.kind === 'door' && broken.destroyed).toBe(true);
     expect(anchorsIntact(r.state)).toBe(true);
     const after = moveTargets(r.state, 'varek');
-    // Through the doorway (16,12), onto the tile inside it (16,11), and on into the hall.
-    for (const t of ['16,12', '16,11', '17,11', '17,10', '18,10']) expect(after, t).toContain(t);
-    // The anchors themselves stay solid: (15,11) is anchorC, not a floor tile to stand on.
+    // Through the doorway (16,12), onto the tile inside it (16,11), and on into the hall
+    // (around the reflecting pool at (17,10) (18,10), by the dais (16,10) or along the south wall).
+    for (const t of ['16,12', '16,11', '17,11', '16,10', '16,9', '17,9']) expect(after, t).toContain(t);
+    // The anchors themselves stay solid: (15,11) is anchorC, not a floor tile to stand on; the pool is water.
     expect(after).not.toContain('15,11');
-    const m = applyAction(r.state, { kind: 'move', unitId: 'varek', to: { x: 17, y: 10 } });
-    expect(get(m.state, 'varek').pos).toEqual({ x: 17, y: 10 });
-    expect(m.state.map.zones.wellspringHall!.some((t) => t.x === 17 && t.y === 10)).toBe(true);
+    expect(after).not.toContain('17,10');
+    expect(after).not.toContain('18,10');
+    const m = applyAction(r.state, { kind: 'move', unitId: 'varek', to: { x: 17, y: 9 } });
+    expect(get(m.state, 'varek').pos).toEqual({ x: 17, y: 9 });
+    expect(m.state.map.zones.wellspringHall!.some((t) => t.x === 17 && t.y === 9)).toBe(true);
     expect(anchorsIntact(m.state)).toBe(true);
   });
 
@@ -343,7 +460,7 @@ describe('prologue scenario: pacing (map doc section 6)', () => {
     expect(cost(gate, 'watch-1', [15, 7])).toBe(20);
   });
 
-  it('the Second Bell route is 26 cost with both bridges and 42 without', () => {
+  it('the Second Bell route is 26 cost with both bridges and 40 without', () => {
     const s = withWaveScout(initial(), 'dawnLantern', [24, 20]);
     expect(cost(s, 'lantern-1', [15, 7])).toBe(26);
     expect(rounds(26, 5)).toBe(6);
@@ -355,13 +472,19 @@ describe('prologue scenario: pacing (map doc section 6)', () => {
       get(burned, wolf).pos = standAt;
       burned = applyAction(burned, { kind: 'interact', unitId: wolf, interaction: 'burnBridge', targetId: bridgeId }).state;
     };
-    burn('wolf-k1', 'bridgeCenter', { x: 15, y: 16 });
+    // The burners stand on the south bank, beside each bridge's landing.
+    burn('wolf-k1', 'bridgeCenter', { x: 15, y: 17 });
     expect(burned.modifiers.bridgesBurned).toBe(false);
-    expect(cost(burned, 'lantern-1', [15, 7])).toBeLessThan(42);
-    burn('wolf-k2', 'bridgeEast', { x: 26, y: 16 });
+    expect(cost(burned, 'lantern-1', [15, 7])).toBeLessThan(40);
+    // The whole bridge burns, its landing deck included.
+    for (const [x, y] of [[15, 15], [14, 16], [15, 16], [16, 16]] as const) expect(burned.map.terrain[y]![x]).toBe('water');
+    burn('wolf-k2', 'bridgeEast', { x: 26, y: 17 });
     expect(burned.modifiers.bridgesBurned).toBe(true);
-    expect(cost(burned, 'lantern-1', [15, 7])).toBe(42);
-    expect(rounds(42, 5)).toBe(9);
+    expect(burned.map.terrain[15]![26]).toBe('water');
+    expect(burned.map.terrain[16]![26]).toBe('water');
+    // Only the west bridge (x = 6) is left: the long way round.
+    expect(cost(burned, 'lantern-1', [15, 7])).toBe(40);
+    expect(rounds(40, 5)).toBe(8);
 
     // The Second Bell wave is delayed two rounds (9 -> 11); the other waves are not.
     expect(waveArrivalRound(s, s.waves.find((w) => w.id === 'dawnLantern')!)).toBe(9);

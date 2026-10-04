@@ -1,33 +1,35 @@
 # Prologue Level Design: Night of Ashen Lanterns
 
-Status: v0.3 balance ("Rebel-favoured", see section 8), companion to `docs/design/prologue-slice.md` (the binding rules) and `docs/story.md` (prologue section). Played as the **Rebels**. All coordinates are `(x, y)` with x = column from 0 on the left and y = row from 0 at the top. Rectangles are inclusive on both ends. The map is **32 columns x 22 rows**.
+Status: v0.3 balance ("Rebel-favoured", see section 8) on the v0.4 map (the art director's geometry additions, see section 9), companion to `docs/design/prologue-slice.md` (the binding rules) and `docs/story.md` (prologue section). Played as the **Rebels**. All coordinates are `(x, y)` with x = column from 0 on the left and y = row from 0 at the top. Rectangles are inclusive on both ends. The map is **32 columns x 22 rows**.
 
 ## 1. Map
 
-Legend: `#` wall, `.` floor, `+` door, `=` barred door, `~` water (canal), `b` bridge, `o` pillar, `r` rubble, `T` throne/dais. Nothing else is drawn in the grid. Units, objects and zones are listed by coordinate in the sections below.
+Legend: `#` wall, `.` floor, `+` door, `=` barred door, `~` water (canal, and the Wellspring pool), `b` bridge, `o` pillar, `r` rubble, `T` throne/dais, `t` banquet table, `c` crates, `s` quay steps, `*` brazier, `B` great bell. Nothing else is drawn in the grid: the outer-gate portcullis is an object over the floor tiles `(22..25, 21)`. Units, objects and zones are listed by coordinate in the sections below.
+
+Terrain stats (the slice spec's table, plus the v0.4 kinds): `t` table and `c` crates play exactly like rubble (move 2, +1 DEF, low cover); `s` steps play exactly like floor; `*` brazier and `B` bell are impassable but do not block line of sight.
 
 ```grid
 ################################
-#........#.#..TTTT..#.#........#
+#.tttttt.#.#..TTTT..#.#........#
 #........#.#.o.TT.o.#.#........#
 #..o..o..#.=........=.#######..#
 #........+.#.o....o.#.#........#
 #..o..o..#.#..o..o..#.#.########
 #........#.####+=####.#........#
-#........#............#........#
+#.tttttt.#............#........#
 ##########.####=#####.####+#####
 ##########.#.o......#..........#
-.........+.+...TT..o#...o...o..#
+.........+.+...TT~~o#...o...o..#
 .........+.+......o.#........r.#
 ##########.#####=####......r....
-..............r................#
-.......r..........r.....r......#
-#~~~~b~~~~~~~~~b~~~~~~~~~~b~~~~#
-#.......r...o......o...........#
-######....r..........r.........#
-##...#...r.....................#
+..............c................#
+.....s.c......s.s.c.....cs.s...#
+#~~~~~b~~~~~~~~b~~~~~~~~~~b~~~~#
+#~~~~~b~~~~~~~bbb~~~~~~~~~b~~~~#
+######....r.*......*.r.........#
+##B..#...r.....................#
 ##...+................r........#
-######......o......o...........#
+######......*......*...........#
 ######################....######
 ```
 
@@ -40,12 +42,12 @@ Column ruler (not part of the grid, for reading only):
 
 Reading the map (north is up):
 
-- **South city (y 16..20):** the rebels' side. The **inner gate** plaza sits in the middle (x 12..19), flanked by four pillar piers. The **bell tower** is the small walled room in the south-west corner. The outer gate (gap in the south wall at x 22..25) is where the Dawn Lantern knights and the Southern Legion break in.
-- **Canal (y 15):** one tile wide, wall to wall, crossed by three one-tile bridges at x = 5 (west), x = 15 (center), x = 26 (east). Radiants can still shoot across it.
-- **Quay (y 13..14):** the palace's front terrace on the north bank. The **City Watch gate** is the two edge tiles `(0,13)` and `(0,14)`.
-- **West block:** the **Feast Hall** (x 1..8, y 1..7, one door at `(9,4)`) and, below it, the 2-wide **servants' tunnel** (y 10..11) running to the west edge.
+- **South city (y 17..20):** the rebels' side. The **inner gate** plaza sits in the middle (x 12..19), with a lit brazier on each corner. The **bell tower** is the small walled room in the south-west corner, the great bell hanging in its north-west corner. The outer gate (gap in the south wall at x 22..25) is shut by a **portcullis** until the Dawn Lantern knights break in at Second Bell (they arrive on its tiles); the Southern Legion comes in behind them at Dawn.
+- **Canal (y 15..16):** two tiles wide, wall to wall, crossed by three bridges: the west one at x = 6 and the east one at x = 26 (two tiles each), and the center one at x = 15, whose south end lands on a 3-wide deck `(14..16, 16)` in front of the inner gate. Radiants (range 1-3) can still shoot across it, but only from the south-bank edge (y 17) to the quay's south row (y 14).
+- **Quay (y 13..14):** the palace's front terrace on the north bank, with stacked crates for cover and steps down to the water beside each bridge. The **City Watch gate** is the two edge tiles `(0,13)` and `(0,14)`.
+- **West block:** the **Feast Hall** (x 1..8, y 1..7, one door at `(9,4)`; two long banquet tables along its north and south walls, the duel space between the pillars kept clear) and, below it, the 2-wide **servants' tunnel** (y 10..11) running to the west edge.
 - **Spine:** corridor x = 10 on the west, corridor x = 21 on the east, joined by the **antechamber** (y = 7). Both corridors open onto the quay.
-- **Center:** the **Throne Hall** (x 12..19, y 1..5) at the far north, then the antechamber, then the **Wellspring Hall** (x 12..19, y 9..11) directly south of it. The Wellspring Hall's only unbarred door is the servants' door pair on the west wall at `(11,10)` and `(11,11)`.
+- **Center:** the **Throne Hall** (x 12..19, y 1..5) at the far north, then the antechamber, then the **Wellspring Hall** (x 12..19, y 9..11) directly south of it, with a shallow reflecting pool `(17,10) (18,10)` beside the rite dais. The Wellspring Hall's only unbarred door is the servants' door pair on the west wall at `(11,10)` and `(11,11)`.
 - **East block:** the **Princess's Tower** (x 23..30, y 1..7), a zigzag of two partition walls, whose only door is `(26,8)`. Below it is the open **east court** (x 22..30, y 9..12), with Mira's escape tile `(31,12)` on the east edge.
 
 Design intent in one line: the straight line from the rebels to the throne is blocked by the Wellspring Hall, so Varek must go around by the west corridor and the antechamber, past the anchor-breakers and the throne guard.
@@ -57,15 +59,15 @@ All rectangles are inclusive. A tile belongs to a zone if it lies inside the rec
 | Zone id | Rectangle | Notes |
 |---|---|---|
 | `throneHall` | x 12..19, y 1..5 | Interior only. Dais `T` at `(14,1) (15,1) (16,1) (17,1) (15,2) (16,2)`. |
-| `wellspringHall` | x 12..19, y 9..11 | Interior only. Rite dais `T` at `(15,10) (16,10)`. |
-| `feastHall` | x 1..8, y 1..7 | Interior only. Door `(9,4)`. |
+| `wellspringHall` | x 12..19, y 9..11 | Interior only. Rite dais `T` at `(15,10) (16,10)`. Reflecting pool (water) at `(17,10) (18,10)`. |
+| `feastHall` | x 1..8, y 1..7 | Interior only. Door `(9,4)`. Banquet tables at x 2..7 on y 1 and on y 7. |
 | `princessTower` | x 23..30, y 1..7 | Interior only. Door `(26,8)`. Escape exit tile `(31,12)` (see below). |
-| `bellTower` | x 2..4, y 18..19 | Interior only. Door `(5,19)`. |
-| `innerGate` | x 12..19, y 16..20 | Rebel start area. Pillar piers at `(12,16) (19,16) (12,20) (19,20)`. |
+| `bellTower` | x 2..4, y 18..19 | Interior only. Door `(5,19)`. The great bell (impassable) fills `(2,18)`; the other five tiles are floor. |
+| `innerGate` | x 12..19, y 17..20 | Rebel start area. Braziers (impassable) at `(12,17) (19,17) (12,20) (19,20)`. |
 | `servantsTunnel` | x 0..9, y 10..11 | Two parallel lanes. Doors at `(9,10)` and `(9,11)`. **Exit tiles:** `(0,10)` and `(0,11)` on the west edge. A unit that ends a move on either leaves the map. |
 | `antechamber` | x 10..21, y 7..7 | Helper zone: the corridor-to-corridor strip south of the Throne Hall. |
 | `eastCourt` | x 22..30, y 9..12 | Helper zone: the open ground between the tower door and Mira's exit. |
-| `quay` | x 0..30, y 13..14 | Helper zone: north-bank terrace. |
+| `quay` | x 0..30, y 13..14 | Helper zone: north-bank terrace. Crates at `(14,13) (7,14) (18,14) (24,14)`, steps at `(5,14) (14,14) (16,14) (25,14) (27,14)`. |
 
 Escape and exit tiles (both on the map edge):
 
@@ -80,7 +82,7 @@ Spawn areas (tile lists are in section 5):
 |---|---|---|
 | `rebelSpawn` | the `innerGate` rectangle | Start positions of the rebel force |
 | `watchSpawn` | `(0,13) (0,14) (1,13) (1,14) (2,13) (2,14) (3,13) (3,14)` | First Bell (City Watch) |
-| `barracksSpawn` | `(22,21) (23,21) (24,21) (25,21) (23,20) (24,20)` | Second Bell (Dawn Lantern) |
+| `barracksSpawn` | `(22,21) (23,21) (24,21) (25,21) (23,20) (24,20)` | Second Bell (Dawn Lantern). The four y 21 tiles are under the portcullis, which opens as they arrive. |
 | `legionSpawn` | `(21,20) (22,20) (25,20) (26,20)` | Dawn (Southern Legion) |
 
 ## 3. Units at Midnight (round 1)
@@ -157,17 +159,25 @@ Three objects with tag `wardAnchor`, 12 HP each, on floor tiles inside `wellspri
 
 ### Bridges
 
-One tile each. Interacting with the tile burns it (it becomes water).
+Each bridge spans the 2-wide canal and is one object: interacting with any of its tiles (from a tile next to it, not standing on it) burns the whole bridge (every tile becomes water). A Pyre touching any tile also burns it whole.
 
-| Id | Tile | Tags | Notes |
+| Id | Tiles | Tags | Notes |
 |---|---|---|---|
-| `bridgeWest` | `(5,15)` | (none) | Far from the barracks, so it is not on their route. |
-| `bridgeCenter` | `(15,15)` | `barracksRoute` | Directly north of the rebel start. |
-| `bridgeEast` | `(26,15)` | `barracksRoute` | On Kaela's route to the tower. |
+| `bridgeWest` | `(6,15) (6,16)` | (none) | Far from the barracks, so it is not on their route. |
+| `bridgeCenter` | `(15,15)`, deck `(14,16) (15,16) (16,16)` | `barracksRoute` | Directly north of the rebel start. One tile wide over the water, landing on a 3-wide deck on the inner-gate side (why: section 8, "v0.4 map additions"). |
+| `bridgeEast` | `(26,15) (26,16)` | `barracksRoute` | On Kaela's route to the tower. |
 
-Burning `bridgeCenter` and `bridgeEast` together triggers the "Second Bell is 2 rounds later" modifier. The loyalist walk is also longer: from `(24,20)` to the antechamber `(15,7)` it is 26 move cost with both bridges and 42 without them (the west bridge detour).
+Burning `bridgeCenter` and `bridgeEast` together triggers the "Second Bell is 2 rounds later" modifier. The loyalist walk is also longer: from `(24,20)` to the antechamber `(15,7)` it is 26 move cost with both bridges and 40 without them (the west bridge detour). Burners stand on the south bank beside each landing (`(15,17)`, `(26,17)`) or on the quay.
 
-The "Seize the bell tower" bonus has no tile object; it uses the `bellTower` zone rectangle.
+### Outer gate (portcullis)
+
+| Id | Tiles | Opened by |
+|---|---|---|
+| `outerGate` | `(22,21) (23,21) (24,21) (25,21)` | the `dawnLantern` wave (Second Bell) |
+
+A gate object (`kind: 'gate'`). While closed its tiles cannot be entered, stood on or spawned on, by either side (pathfinding, reachability, the AI's grid and wave spawning all treat them as wall); it does not block line of sight and cannot be attacked. It opens for good at the start of the round its wave arrives, immediately before that wave's units are placed, so the knights spawn on its tiles (if the bridges delay the wave, the gate waits with it). There is no gate event: the UI raises the portcullis on that wave's `reinforcementsArrived` event. Before v0.4 the gap was open ground nobody had a reason to use, so the gate changes no route.
+
+The "Seize the bell tower" bonus has no tile object; it uses the `bellTower` zone rectangle (a rebel in it and no loyalist when the rebel phase ends). The great bell's tile `(2,18)` is impassable, so nobody ever stands on it; the guard at `(3,18)` can still be reached from `(4,18)` and `(3,19)`.
 
 ## 5. Reinforcement waves
 
@@ -176,7 +186,7 @@ If a listed tile is occupied, the engine uses the nearest free tile, as the spec
 | Bell | Round | Wave | Composition | Spawn tiles (in order) |
 |---|---|---|---|---|
 | First Bell | 5 | City Watch | `watch-1`..`watch-6` Soldier, `watch-7` Kindled | `watch-1`..`watch-6` on `(0,13) (0,14) (1,13) (1,14) (2,13) (2,14)`, `watch-7` (Kindled) on `(3,13)`, `(3,14)` spare |
-| Second Bell | 9 | Dawn Lantern | `lantern-1`..`lantern-4` Kindled, `lantern-5`..`lantern-6` Radiant | `lantern-1`..`lantern-4` on `(24,20) (23,20) (22,21) (25,21)`, `lantern-5` and `lantern-6` (Radiant) on `(23,21) (24,21)` |
+| Second Bell | 9 | Dawn Lantern | `lantern-1`..`lantern-4` Kindled, `lantern-5`..`lantern-6` Radiant | `lantern-1`..`lantern-4` on `(24,20) (23,20) (22,21) (25,21)`, `lantern-5` and `lantern-6` (Radiant) on `(23,21) (24,21)`. The portcullis over `(22..25, 21)` opens as they arrive. |
 | Dawn | 13 | Southern Legion (token) | `legion-1`..`legion-4` Soldier | `(21,20) (22,20) (25,20) (26,20)` |
 
 Notes:
@@ -187,7 +197,7 @@ Notes:
 
 ## 6. Pacing notes
 
-Move values from the spec: Soldier 4, Kindled 5, Radiant 4, Ascendant 5. Costs below are real Dijkstra costs on this grid with floor, door, bridge and dais at 1, and rubble and pillar at 2, ignoring units. Rounds are `ceil(cost / move)`. The window is rounds 1 to 12 (Dawn arrives at 13).
+Move values from the spec: Soldier 4, Kindled 5, Radiant 4, Ascendant 5. Costs below are real Dijkstra costs on this grid with floor, door, bridge, steps and dais at 1, and rubble, crates, tables and pillar at 2, ignoring units. Rounds are `ceil(cost / move)`. The window is rounds 1 to 12 (Dawn arrives at 13).
 
 **Varek to the Emperor.** `(15,17)` to `(15,3)`, adjacent to Halden, is cost 24, which is 5 rounds for move 5. The cheapest route is center bridge, west along the quay to the corridor mouth `(10,13)`, north up the west corridor to the antechamber, east along it, then through `(15,6)` and into the hall. He passes the tunnel junction `(10,10)` at cost 12 (round 3) and the antechamber at cost 20 (round 4), exactly where the anchor-breakers stand. The east corridor (x = 21) is 2 longer but empty, and it is the line the simulated rushes take. Either way he reaches the Throne Hall door on round 4 and the hall on round 5. Its garrison is four guards (three Kindled inside, a Soldier on the antechamber) and they stand on all four Confront tiles from round 2. Varek is nearly untouchable for them (non-Ascendants deal 1), so the fight is about tempo, not survival: Tempest softens the whole room, then he needs one action to kill a blocker and one more to Confront. If escorts free a tile first, he steps in and Confronts on the same turn. Simulated rushes Confront on **round 6**, Varek alone too (v0.2, with a Radiant on the pillar and a Kindled on the antechamber: round 7, alone round 8), with First Bell at round 5 behind him and Second Bell at round 9 ahead. The shortcut through the Wellspring Hall (break `doorWellSouth` and `doorWellNorth`) is cost 16, 4 rounds, but costs 25 HP of door-breaking and leads straight into the anchors, the breakers and the sealed Elian; it is the Elian-first line below.
 
@@ -205,7 +215,7 @@ Move values from the spec: Soldier 4, Kindled 5, Radiant 4, Ascendant 5. Costs b
 **Why the optional objectives are worth the detour**
 
 - **Bell tower** (`bellTower`, one Soldier inside). `wolf-k1` `(14,17)` reaches `(4,19)` at cost 12 (3 rounds), `wolf-s2` `(14,19)` at cost 10 (3 rounds). A Kindled plus a Soldier clear and hold it by the end of round 4, in time to stop First Bell. Cost: two Wolves out of eight for the first four rounds, and they are out of the fight after that. Payoff: every bell comes 2 rounds later, so the window is effectively 14 rounds, and the Second Bell seal break slips to round 11. A quick rush does not need it (it is over by round 7); the Elian-first sweep does: it also holds the City Watch back while Varek fights his way out of the Wellspring Hall (sims, 24 seeds: 92% wins and 20 three-objective wins without it, 100% and 24 with it; over 96 seeds 84% / 80% against 99% / 98%).
-- **Burn the canal bridges** (`bridgeCenter`, `bridgeEast`). Each interact is one action by a unit next to the bridge, which costs about a turn of one Wolf. It delays the Second Bell *wave* by 2 rounds (the bell itself, and so the seal break, still ring on time) and lengthens the knights' walk from 26 to 42 cost, so they are about 3 rounds further away. It cuts the rebels' own retreat, so burn each bridge only after Varek (center) and Kaela (east) have crossed. The burner Wolves stranded on the south bank can then walk to the bell tower. It only pays in a long battle: the knights matter when the fight runs past round 10 or Mira is kept bottled up, and the two burners are two fewer blades in the Wellspring Hall (sims: bell tower plus bridges is 92% / 22 of 24 three-objective wins on the official seeds and 97% / 95% over 96 seeds, clearly above the plain sweep and close to the bell tower alone).
+- **Burn the canal bridges** (`bridgeCenter`, `bridgeEast`). Each interact is one action by a unit next to the bridge, which costs about a turn of one Wolf. It delays the Second Bell *wave* by 2 rounds (the bell itself, and so the seal break, still ring on time) and lengthens the knights' walk from 26 to 40 cost, so they are about 3 rounds further away. It cuts the rebels' own retreat, so burn each bridge only after Varek (center) and Kaela (east) have crossed. The burner Wolves stranded on the south bank can then walk to the bell tower. It only pays in a long battle: the knights matter when the fight runs past round 10 or Mira is kept bottled up, and the two burners are two fewer blades in the Wellspring Hall (sims: bell tower plus bridges is 92% / 22 of 24 three-objective wins on the official seeds and 97% / 95% over 96 seeds, clearly above the plain sweep and close to the bell tower alone).
 - **Keep Orsa pinned.** It costs nothing beyond leaving Grimm in the duel, but Grimm has to be played (see above): fighting back from a pillar usually wins the duel; doing nothing only holds her to about round 6.
 
 ## 7. Dialogue
@@ -242,7 +252,38 @@ Columns: Confront = mean round of the Confront in the runs that got one. Elian K
 | `sweepGrimmIdle` | `fullSweep` with Grimm left to auto-duel. |
 | `sweepThroneFirst` | Throne first, then Varek goes for Elian; 3 Wolves kill the breakers and bar the west door. |
 
-### v0.3 "Rebel-favoured" (current)
+### v0.4 map additions: balance check
+
+The geometry pass logged in section 9 changed no stats, rules or AI, and was meant to be balance-neutral. Same seeds before (v0.3 map) and after (v0.4 map), `npm run sim -- --seeds 24`; each cell is before → after. Two sim strategies needed new coordinates because the tiles moved: the bridge burners now stand at `(15,17)` and `(26,17)` (was `(15,16)` and `(26,16)`, now canal), and the bell-tower Wolves' goal tiles no longer include the bell's tile `(2,18)`.
+
+| Strategy | Win | Confront | Elian K/E (esc rnd) | Mira C/E/D | All 3 | Losses | Grimm dead | Duel G/O |
+|---|---|---|---|---|---|---|---|---|
+| `endTurn` | 0% → 0% | - | 0/24 (7.2 → 7.2) | 0/24/0 → 0/24/0 | 0 → 0 | 1.0 → 1.0 | 24 (r6.0) → 24 (r6.0) | 0/24 → 0/24 |
+| `duelOnly` | 0% → 0% | - | 0/24 (7.3 → 7.3) | 0/24/0 → 0/24/0 | 0 → 0 | 1.5 → 0.8 | 12 (r7.6) → 19 (r8.3) | 14/10 → 13/11 |
+| `charge` | 25% → 25% | 6.0 → 6.0 | 0/6 (9.8 → 9.8) | 0/6/0 → 0/6/0 | 0 → 0 | 1.6 → 1.6 | 0 → 0 | - |
+| `chargePinned` | 100% → 100% | 6.0 → 6.0 | 0/24 (8.7 → 9.3) | 0/24/0 → 0/24/0 | 0 → 0 | 2.5 → 3.8 | 11 (r7.3) → 10 (r7.3) | 13/11 → 14/10 |
+| `varekRush` | 100% → 100% | 6.0 → 6.0 | 0/24 (7.0 → 7.3) | 24/0/0 → 24/0/0 | 0 → 0 | 0.0 → 0.3 | 0 → 3 (r7.7) | 13/0 → 14/3 |
+| `rushGrimmIdle` | 100% → 100% | 6.0 → 6.0 | 0/24 (7.0 → 7.2) | 24/0/0 → 24/0/0 | 0 → 0 | 1.0 → 1.0 | 24 (r5.8) → 24 (r5.8) | 0/24 → 0/24 |
+| `grimmHelped` | 100% → 100% | 6.0 → 6.0 | 0/24 (8.1 → 7.9) | 23/1/0 → 23/1/0 | 0 → 0 | 0.2 → 0.2 | 4 (r7.5) → 4 (r7.5) | 20/4 → 20/4 |
+| `varekSolo` | 100% → 100% | 6.0 → 6.0 | 0/24 (7.0 → 7.2) | 17/7/0 → 17/7/0 | 0 → 0 | 0.2 → 0.3 | 5 (r7.4) → 7 (r7.4) | 14/5 → 14/7 |
+| `bonusRush` | 100% → 100% | 6.0 → 6.0 | 0/24 (7.1 → 7.8) | 24/0/0 → 23/1/0 | 0 → 0 | 0.0 → 0.4 | 0 → 9 (r7.4) | 17/0 → 12/9 |
+| `fullSweep` | 92% → 92% | 10.9 → 10.9 | 24/0 | 22/2/0 → 22/2/0 | 20 → 20 | 1.3 → 1.3 | 4 (r7.8) → 4 (r7.8) | 20/4 → 20/4 |
+| `sweepBell` | 100% → 96% | 11.5 → 11.4 | 24/0 | 24/0/0 → 24/0/0 | 24 → 23 | 1.6 → 1.7 | 3 (r8.3) → 5 (r7.8) | 22/2 → 19/5 |
+| `sweepBonuses` | 92% → 96% | 11.5 → 11.3 | 24/0 | 24/0/0 → 24/0/0 | 22 → 23 | 1.7 → 1.5 | 6 (r8.2) → 7 (r8.0) | 20/4 → 19/5 |
+| `sweepGrimmIdle` | 46% → 46% | 10.5 → 10.5 | 24/0 | 24/0/0 → 24/0/0 | 11 → 11 | 5.0 → 5.0 | 24 (r5.8) → 24 (r5.8) | 0/24 → 0/24 |
+| `sweepThroneFirst` | 100% → 100% | 6.0 → 6.0 | 0/24 (8.5 → 8.6) | 24/0/0 → 23/1/0 | 0 → 0 | 1.9 → 1.6 | 9 (r7.6) → 10 (r7.5) | 15/9 → 14/10 |
+
+Robustness, 96 seeds (bases 1, 3, 5, 7), before → after: `fullSweep` 84% / 80% all three → 83% / 80%; `sweepBell` 99% / 98% → 99% / 97%; `sweepBonuses` 97% / 95% → 98% / 98%; `charge` 26% → 26%; `varekRush` 100% with Mira captured 96 → 95 of 96.
+
+Reading:
+
+- **Same story everywhere.** Win rates are unchanged for 12 of 14 strategies on the official seeds; `sweepBell` loses one run to Dawn and `sweepBonuses` wins one more, and both even out over 96 seeds. Doing nothing still loses, the rush still wins on round 6 with Mira captured, the sweeps still need the bell tower to be safe, and a careless charge still loses three times in four.
+- **The canal needed the center deck.** With a plain two-tile center bridge, the mass `charge` lost every run (0%, Kaela fallen 24 of 24), `fullSweep` fell to 83% and `sweepGrimmIdle` to 33%: eleven units now funnel single file over two bridge tiles instead of one, the back half of the pack spills onto the west route, meets the freed Orsa there, and the choreography in the Throne Hall changes. A full 2x2 center bridge overshoots the other way (`charge` 100%, `sweepGrimmIdle` 58%). The 3-wide south deck `(14..16, 16)` recreates the old landing (the floor tiles beside the old bridge foot on row 16), and with it every strategy is back on its v0.3 numbers within a run or two. The west and east bridges stay two tiles long: no plan crowds them.
+- **The pool has a small side effect.** The anchor-breakers walk around it between `anchorB` and `anchorC`, so in the quick rushes Elian slips out of the tunnel a few tenths of a round later on average (`varekRush` 7.0 → 7.3, `bonusRush` 7.1 → 7.8). Those battles then last a round longer, the duel gets that extra round, and Orsa wins a few of them (`varekRush` 3, `bonusRush` 9, was 0 and 0) and `chargePinned` loses a little more (2.5 → 3.8 units). No result changes. Other two-tile pools were worse (one north of the dais took `fullSweep` to 63%).
+- **`duelOnly`** no longer loses Kaela to the knights before Dawn (12 → 0 runs); all 24 runs are Dawn defeats, so it is still 0%.
+- Each of the other additions was also undone on its own (tables, crates, steps, braziers, bell, portcullis) on the strategies above that moved: none changed a result, and the only difference seen was one `duelOnly` run (braziers).
+
+### v0.3 "Rebel-favoured"
 
 Goal of this pass (confirmed with the user): tilt the battle toward the Rebels. Doing nothing still loses; the Varek rush wins reliably (95%+); the full three-objective plan wins about 80 to 90% of the time and mostly with all three objectives; the bell tower and the bridges clearly help; a careless charge can still lose but less harshly (about 15 to 35%, with Grimm pinned doing better); and the duel is no longer a guaranteed Grimm win when he fights back (about 60 to 80%), while an idle Grimm still loses it.
 
@@ -345,3 +386,19 @@ Only content changed in that pass: unit stats, the Throne Hall garrison and one 
 - Fighting the duel from the pillars always wins it. If it should need help, Orsa 48 HP is the next knob.
 - Mira is the noisiest objective (captured in roughly half of runs). The scripted Kaela is cautious; a plugged tower door keeps Mira in but also keeps the battle going until Dawn, which is when the knights catch Kaela.
 - The sims only cover scripted greedy players. Numbers are for comparing variants, not promises about human play.
+
+## 9. Changelog
+
+### v0.4 map additions
+
+The eight geometry proposals from `docs/design/visual-style.md` section 10, accepted by the user. Map still 32 x 22; no unit moved; no stats, rules or AI changed. Balance check in section 8 ("v0.4 map additions").
+
+1. **Banquet tables** (`t`, move 2, +1 DEF) in the Feast Hall: x 2..7 on y 1 and on y 7, along the walls. The duel space (rows 2..6, the four pillars, Grimm `(4,4)`, Orsa `(5,4)`) and the door lane to `(9,4)` are untouched.
+2. **Reflecting pool** (water) in the Wellspring Hall: `(17,10) (18,10)`, east of the rite dais. Every anchor keeps a standable neighbour, the servants' doors to Elian, the tiles inside both barred doors and Elian's tunnel route (cost 15) are unchanged.
+3. **Crates** (`c`, same stats as rubble) on the quay where its rubble was: `(14,13) (7,14) (18,14) (24,14)`. The east court and south city rubble stays.
+4. **The great bell** (`B`, impassable) in the bell tower at `(2,18)`. The guard at `(3,18)` and the "seize the bell tower" rule (a rebel in the zone, no loyalist) are unchanged.
+5. **Portcullis** `outerGate` over the outer-gate gap `(22..25, 21)`: closed until the Dawn Lantern wave arrives, then open for good (engine: `kind: 'gate'` objects, section 4).
+6. **Braziers** (`*`, impassable) replace the four plaza piers, now at the corners of the smaller inner gate: `(12,17) (19,17) (12,20) (19,20)`.
+7. **Quay steps** (`s`, plays like floor) on the quay's south row beside the bridges: `(5,14) (14,14) (16,14) (25,14) (27,14)`.
+8. **Two-tile canal**: row 16 is water too, wall to wall. Bridges: west `(6,15) (6,16)` (moved one column east, since `(5,17)` is the bell tower's wall), center `(15,15)` plus a 3-wide deck `(14,16) (15,16) (16,16)`, east `(26,15) (26,16)`. Each burns as one bridge. The south city and the `innerGate` zone shrink to y 17..20 (the old row-16 rubble at `(8,16)` is gone). Path costs that matter are unchanged (Varek to the throne 24, Kaela to `(26,13)` 14, the knights to the antechamber 26), except the knights' walk with both route bridges burned, 42 → 40, since the west bridge is one column closer.
+

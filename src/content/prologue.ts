@@ -7,32 +7,34 @@ export const prologueIntro =
   'Midnight. The lanterns of Calderon go dark one by one. The Ashen Wolves hold the inner gates, ' +
   'and the Wellspring Hall is sealed with the Crown Prince inside. The Emperor must fall before dawn.';
 
-// Legend: # wall, . floor, + door, = barred door (an object sits on it), ~ water (canal),
-// b bridge, o pillar, r rubble, T throne/dais. The doc's characters are pasted verbatim.
+// Legend: # wall, . floor, + door, = barred door (an object sits on it), ~ water (canal and
+// the Wellspring pool), b bridge, o pillar, r rubble, T throne/dais, t banquet table,
+// c crates, s quay steps, * brazier, B great bell. The outer-gate portcullis is an
+// object over the floor tiles (22..25, 21). The doc's characters are pasted verbatim.
 //            x: 00000000001111111111222222222233
 //               01234567890123456789012345678901
 const MAP: string[] = [
   '################################', //  0
-  '#........#.#..TTTT..#.#........#', //  1
+  '#.tttttt.#.#..TTTT..#.#........#', //  1
   '#........#.#.o.TT.o.#.#........#', //  2
   '#..o..o..#.=........=.#######..#', //  3
   '#........+.#.o....o.#.#........#', //  4
   '#..o..o..#.#..o..o..#.#.########', //  5
   '#........#.####+=####.#........#', //  6
-  '#........#............#........#', //  7
+  '#.tttttt.#............#........#', //  7
   '##########.####=#####.####+#####', //  8
   '##########.#.o......#..........#', //  9
-  '.........+.+...TT..o#...o...o..#', // 10
+  '.........+.+...TT~~o#...o...o..#', // 10
   '.........+.+......o.#........r.#', // 11
   '##########.#####=####......r....', // 12
-  '..............r................#', // 13
-  '.......r..........r.....r......#', // 14
-  '#~~~~b~~~~~~~~~b~~~~~~~~~~b~~~~#', // 15
-  '#.......r...o......o...........#', // 16
-  '######....r..........r.........#', // 17
-  '##...#...r.....................#', // 18
+  '..............c................#', // 13
+  '.....s.c......s.s.c.....cs.s...#', // 14
+  '#~~~~~b~~~~~~~~b~~~~~~~~~~b~~~~#', // 15
+  '#~~~~~b~~~~~~~bbb~~~~~~~~~b~~~~#', // 16
+  '######....r.*......*.r.........#', // 17
+  '##B..#...r.....................#', // 18
   '##...+................r........#', // 19
-  '######......o......o...........#', // 20
+  '######......*......*...........#', // 20
   '######################....######', // 21
 ];
 
@@ -61,10 +63,15 @@ const objects: ObjectDef[] = [
   { id: 'anchorA', kind: 'anchor', pos: [12, 9], hp: 12 },
   { id: 'anchorB', kind: 'anchor', pos: [19, 9], hp: 12 },
   { id: 'anchorC', kind: 'anchor', pos: [15, 11], hp: 12 },
-  // Canal bridges. The centre and east ones are on the Dawn Lantern knights' route.
-  { id: 'bridgeWest', kind: 'bridge', tiles: [[5, 15]] },
-  { id: 'bridgeCenter', kind: 'bridge', tiles: [[15, 15]], tags: ['barracksRoute'] },
-  { id: 'bridgeEast', kind: 'bridge', tiles: [[26, 15]], tags: ['barracksRoute'] },
+  // Canal bridges across the 2-wide canal (each burns as one bridge). The centre one lands
+  // on a 3-wide deck on the inner-gate side, which keeps the old crossing's flow (balance log).
+  // The centre and east ones are on the Dawn Lantern knights' route.
+  { id: 'bridgeWest', kind: 'bridge', tiles: [[6, 15], [6, 16]] },
+  { id: 'bridgeCenter', kind: 'bridge', tiles: [[15, 15], [14, 16], [15, 16], [16, 16]], tags: ['barracksRoute'] },
+  { id: 'bridgeEast', kind: 'bridge', tiles: [[26, 15], [26, 16]], tags: ['barracksRoute'] },
+  // The outer-gate portcullis: closed until the Dawn Lantern Knights arrive at Second Bell
+  // (they spawn on its tiles).
+  { id: 'outerGate', kind: 'gate', tiles: [[22, 21], [23, 21], [24, 21], [25, 21]], wave: 'dawnLantern' },
 ];
 
 const units: UnitPlacement[] = [
@@ -135,14 +142,25 @@ export const prologueScenario: ScenarioDef = {
   playerFaction: 'rebel',
   seed: 20240613,
   map: MAP,
-  legend: { '=': 'door', b: 'bridge', o: 'pillar', r: 'rubble', T: 'throne' },
+  legend: {
+    '=': 'door',
+    b: 'bridge',
+    o: 'pillar',
+    r: 'rubble',
+    T: 'throne',
+    t: 'table',
+    c: 'crates',
+    s: 'stairs',
+    '*': 'brazier',
+    B: 'bell',
+  },
   zones: {
     throneHall: { x: 12, y: 1, w: 8, h: 5 },
     wellspringHall: { x: 12, y: 9, w: 8, h: 3 },
     feastHall: { x: 1, y: 1, w: 8, h: 7 },
     princessTower: { x: 23, y: 1, w: 8, h: 7 },
     bellTower: { x: 2, y: 18, w: 3, h: 2 },
-    innerGate: { x: 12, y: 16, w: 8, h: 5 },
+    innerGate: { x: 12, y: 17, w: 8, h: 4 },
     servantsTunnel: { x: 0, y: 10, w: 10, h: 2 },
     antechamber: { x: 10, y: 7, w: 12, h: 1 },
     eastCourt: { x: 22, y: 9, w: 9, h: 4 },
