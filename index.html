@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0a10" />
+    <title>The Lantern Crown</title>
+    <style>
+      html, body { margin: 0; background: #0b0a10; color: #e8e2d0; font-family: system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <main id="board">
+        <div id="board-inner"><canvas id="game" aria-label="Battle map"></canvas></div>
+        <div id="tileinfo" aria-live="polite"></div>
+      </main>
+      <aside id="hud" aria-label="Battle status"></aside>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
