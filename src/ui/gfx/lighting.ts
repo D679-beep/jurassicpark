@@ -4,8 +4,11 @@
 // Owner: WS2 (Lighting & overlays).
 //
 // Two low-res canvases at LIGHT_RES px per tile (`dark`, `glow`) are rebuilt
-// only when something changes (3.7): a flickering light with motion allowed,
-// an era transition, or a different light list / global light. Light stamps
+// only when something changes (3.7): a different light list / global light
+// (immediately), or flicker / an era transition (at most every REFRESH_MS).
+// Each rebuild upscales them once (bilinear) into board-sized caches; every
+// frame then blits the caches 1:1, which is several times cheaper than a
+// smoothed upscale per frame. Light stamps
 // are pre-rendered sprites (one white darkness stamp, one glow stamp per
 // colour); no gradient is created per light per frame. The outdoor and
 // passable masks are built once per map and softened without ctx.filter.
@@ -23,6 +26,17 @@ export const VIGNETTE_MAX = 0.28;
 export const MAX_NIGHT_SHADE = 0.38;
 /** Glow strength of overhead lights relative to point lights (3.1: 0.16k vs 0.34k). */
 const OVERHEAD_GLOW = 0.16 / 0.34;
+/**
+ * Cold sheen alpha on outdoor tiles at moon 0.36. Spec 3.1 says 0.16; at that
+ * strength the open ground went milky grey-blue and the cobbles lost contrast
+ * on the screenshots, so it is halved (integrator may retune).
+ */
+export const MOON_SHEEN = 0.08;
+/**
+ * Minimum ms between rebuilds driven only by flicker or an era transition
+ * (20 Hz). A changed light list (moving or new lights) rebuilds at once.
+ */
+export const REFRESH_MS = 50;
 /** Silence darkener strength in `dark` (6.3). */
 const DARKEN_ALPHA = 0.15;
 
@@ -192,6 +206,19 @@ function buildVignette(W: number, H: number): HTMLCanvasElement {
   return v;
 }
 
+/** Bilinear upscale of a lightmap into a board-sized cache (replaces its contents). */
+function upscale(src: HTMLCanvasElement, dst: HTMLCanvasElement): void {
+  const g = dst.getContext('2d')!;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'copy';
+  g.imageSmoothingEnabled = true;
+  // 'low' = bilinear: smooth enough at 8 px/tile and several times cheaper than 'high'.
+  g.imageSmoothingQuality = 'low';
+  g.drawImage(src, 0, 0, dst.width, dst.height);
+  g.globalCompositeOperation = 'source-over';
+}
+
 const rgbKey = (c: Rgb): number => ((c[0] & 255) << 16) | ((c[1] & 255) << 8) | (c[2] & 255);
 
 // --- the pass -----------------------------------------------------------------------
@@ -224,9 +251,15 @@ export function createLighting(): LightingPass {
   let memoGen = 1;
   let env: Readonly<EraLight> | null = null;
 
+  // Board-sized upscaled copies of dark/glow, refreshed on rebuild.
+  let darkBig: HTMLCanvasElement | null = null;
+  let glowBig: HTMLCanvasElement | null = null;
+
   let lastHash = -1;
-  let lastFlickerFrame = false;
+  let lastBuild = -Infinity;
   let valid = false;
+  /** The glow cache is refreshed one frame after `dark` (halves the refresh spike). */
+  let glowPending = false;
 
   const ensureCap = (m: number): void => {
     if (m <= cap) return;
@@ -353,7 +386,7 @@ export function createLighting(): LightingPass {
     g.globalAlpha = 1;
     g.clearRect(0, 0, W, H);
     if (e.moon > 0) {
-      g.globalAlpha = clamp01((0.16 * e.moon) / 0.36);
+      g.globalAlpha = clamp01((MOON_SHEEN * e.moon) / 0.36);
       g.drawImage(outdoorMask!, 0, 0);
     }
     g.globalCompositeOperation = 'lighter';
@@ -378,10 +411,13 @@ export function createLighting(): LightingPass {
       sites = null;
       dark = null;
       glow = null;
+      darkBig = null;
+      glowBig = null;
       outdoorMask = null;
       passMask = null;
       vignette = null;
       valid = false;
+      glowPending = false;
       lastHash = -1;
     },
     clear() {
@@ -408,22 +444,36 @@ export function createLighting(): LightingPass {
       ensureMaps(f);
       env = f.env;
 
-      // 3.7: rebuild only on change.
-      const flick = !f.motion.reduced && anyFlicker(f.lights);
-      const h = lightsHash(f.lights, f.env);
-      if (!valid || flick || lastFlickerFrame || f.era.t < 1 || h !== lastHash) rebuild(f);
-      lastHash = h;
-      lastFlickerFrame = flick;
+      if (!darkBig || darkBig.width !== mw || darkBig.height !== mh) {
+        darkBig = makeCanvas(mw, mh);
+        glowBig = makeCanvas(mw, mh);
+        valid = false;
+      }
 
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      // 3.7: rebuild only on change; flicker and era fades at most every REFRESH_MS.
+      const animating = (!f.motion.reduced && anyFlicker(f.lights)) || f.era.t < 1;
+      const h = lightsHash(f.lights, f.env);
+      // A clock jump backwards (new battle, tests) never stalls the refresh.
+      if (f.now < lastBuild) lastBuild = -Infinity;
+      const first = !valid;
+      if (glowPending && valid) {
+        upscale(glow!, glowBig!);
+        glowPending = false;
+      } else if (first || h !== lastHash || (animating && f.now - lastBuild >= REFRESH_MS)) {
+        rebuild(f);
+        lastBuild = f.now;
+        lastHash = h;
+        upscale(dark!, darkBig);
+        if (first) upscale(glow!, glowBig!);
+        else glowPending = true;
+      }
+
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(dark!, 0, 0, mw, mh);
+      ctx.drawImage(darkBig, 0, 0);
       ctx.globalCompositeOperation = 'screen';
-      ctx.drawImage(glow!, 0, 0, mw, mh);
+      ctx.drawImage(glowBig!, 0, 0);
       ctx.globalCompositeOperation = 'source-over';
-      ctx.imageSmoothingEnabled = false;
 
       f.levelAt = levelAt;
     },
