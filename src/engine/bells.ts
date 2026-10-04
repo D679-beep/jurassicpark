@@ -7,13 +7,16 @@
 //   before it arrived. A wave never arrives before its bell has rung.
 // - Spawning: unit i prefers its own `pos` if given, else spawnTiles[i % n].
 //   (resolved when the game is created). If that tile is not free, the nearest free tile is found by breadth-first
-//   search over standable tiles (passable terrain, no barred door/anchor;
-//   units do not block the search), neighbour order N, E, S, W. A unit with no
+//   search over standable tiles (passable terrain, no barred door/anchor, no
+//   closed gate; units do not block the search), neighbour order N, E, S, W. A unit with no
 //   reachable free tile is not placed and is listed in `blocked`.
+// - Gates: every gate whose `wave` is the arriving wave opens (for good) just
+//   before that wave's units are placed, so they may spawn on its tiles. Closed
+//   gate tiles are not standable, so no other unit can be on them.
 import { BELL_ORDER, RULES } from './data';
 import { neighbors4, posKey } from './geometry';
 import { breakSeal, emit, emitDialogue, type Ctx } from './effects';
-import { isStandable, unitAt } from './map';
+import { gates, isStandable, unitAt } from './map';
 import type { BellId, BellState, GameState, Pos, WaveState } from './types';
 
 export function getBell(state: GameState, id: BellId): BellState | undefined {
@@ -121,6 +124,15 @@ export function findSpawnTile(state: GameState, preferred: Pos): Pos | null {
   return null;
 }
 
+/**
+ * Opens every closed gate tied to `waveId`. No event of its own: the UI shows
+ * the portcullis rising off the wave's `reinforcementsArrived` event (the
+ * gate's `open` flips in the same step, right before the units are placed).
+ */
+export function openGatesForWave(state: GameState, waveId: string): void {
+  for (const g of gates(state)) if (g.wave === waveId && !g.open) g.open = true;
+}
+
 /** Round-start step: spawn every wave whose arrival round has come. */
 export function spawnDueWaves(ctx: Ctx): void {
   const s = ctx.state;
@@ -129,6 +141,7 @@ export function spawnDueWaves(ctx: Ctx): void {
     const bell = getBell(s, w.bell);
     if (!bell || !bell.rung) continue;
     if (waveArrivalRound(s, w) > s.round) continue;
+    openGatesForWave(s, w.id);
     const placed: { unitId: string; pos: Pos }[] = [];
     const blocked: string[] = [];
     for (const template of w.units) {

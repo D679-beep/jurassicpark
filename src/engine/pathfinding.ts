@@ -2,13 +2,13 @@
 // Ties are broken by insertion order, so paths are deterministic.
 //
 // A unit may step onto a tile when it is in bounds, its terrain is passable,
-// it holds no intact barred door or ward anchor, it holds no enemy unit, it is
-// not inside an enemy Bulwark, and (for a pinned duelist) it is inside
-// feastHall. Allies may be passed through but not ended on.
+// it holds no intact barred door or ward anchor and no closed gate (portcullis),
+// it holds no enemy unit, it is not inside an enemy Bulwark, and (for a pinned
+// duelist) it is inside feastHall. Allies may be passed through but not ended on.
 import { TERRAIN, ZONES } from './data';
 import { comparePos, neighbors4, posEq, posKey } from './geometry';
 import { domainTiles } from './domains';
-import { blockingObjectAt, findUnit, inBounds, terrainAt, unitAt, zoneTiles } from './map';
+import { findUnit, inBounds, objectBlocksMovement, terrainAt, unitAt, zoneTiles } from './map';
 import { canLeaveDuel, effectiveStats, hasStatus, isDuelActive, isInert } from './units';
 import type { GameState, Pos, Unit } from './types';
 
@@ -104,7 +104,7 @@ function stepCost(
   if (!t) return null;
   const cost = TERRAIN[t].moveCost;
   if (cost === null) return null;
-  if (blockingObjectAt(state, p)) return null;
+  if (objectBlocksMovement(state, p)) return null;
   const k = posKey(p);
   if (c.enemyBulwark.has(k)) return null;
   if (c.confinedTo && !c.confinedTo.has(k)) return null;

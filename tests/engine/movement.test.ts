@@ -8,6 +8,8 @@ import {
   pathTo,
   reachableTiles,
   TERRAIN,
+  lineOfSight,
+  terrainDefense,
   type GameState,
   type Pos,
 } from '../../src/engine';
@@ -78,6 +80,39 @@ describe('movement costs and terrain', () => {
     const d = mutate(s, (x) => unit(x, 'a').statuses.push('drained'));
     expect(has(reachableTiles(d, 'a'), 4, 0)).toBe(false);
     expect(has(reachableTiles(d, 'a'), 3, 0)).toBe(true);
+  });
+});
+
+describe('map-pass terrain (tables, crates, stairs, braziers, bell)', () => {
+  // t table, c crates, s stairs, * brazier, B bell: no default glyphs, so the scenario names them.
+  const legend = { t: 'table', c: 'crates', s: 'stairs', '*': 'brazier', B: 'bell' } as const;
+
+  it('has the agreed stats: table and crates play like rubble, stairs like floor, brazier and bell are impassable', () => {
+    expect(TERRAIN.table).toEqual({ moveCost: 2, defense: 1, blocksLos: false });
+    expect(TERRAIN.crates).toEqual(TERRAIN.rubble);
+    expect(TERRAIN.stairs).toEqual(TERRAIN.floor);
+    expect(TERRAIN.brazier).toEqual({ moveCost: null, defense: 0, blocksLos: false });
+    expect(TERRAIN.bell).toEqual({ moveCost: null, defense: 0, blocksLos: false });
+  });
+
+  it('applies them to movement and cover', () => {
+    const s = game(['.tcs.', '..*B.'], [rebel('a', 'soldier', [0, 0], { stats: { move: 9 } })], { legend });
+    expect(s.map.terrain).toEqual([
+      ['floor', 'table', 'crates', 'stairs', 'floor'],
+      ['floor', 'floor', 'brazier', 'bell', 'floor'],
+    ]);
+    expect(pathCost(s, 'a', { x: 1, y: 0 })).toBe(2);
+    expect(pathCost(s, 'a', { x: 2, y: 0 })).toBe(4);
+    expect(pathCost(s, 'a', { x: 3, y: 0 })).toBe(5);
+    const r = reachableTiles(s, 'a');
+    expect(has(r, 2, 1)).toBe(false);
+    expect(has(r, 3, 1)).toBe(false);
+    expect(has(r, 4, 1)).toBe(true); // around the brazier and the bell, over the stairs
+    expect(terrainDefense(s, { x: 1, y: 0 })).toBe(1);
+    expect(terrainDefense(s, { x: 2, y: 0 })).toBe(1);
+    expect(terrainDefense(s, { x: 3, y: 0 })).toBe(0);
+    // Neither brazier nor bell blocks a shot.
+    expect(lineOfSight(s, { x: 1, y: 1 }, { x: 4, y: 1 })).toBe(true);
   });
 });
 

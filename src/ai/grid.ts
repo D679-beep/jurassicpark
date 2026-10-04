@@ -5,8 +5,8 @@
 // Feast Hall). The AI needs whole distance fields ("how far is every tile
 // from the exit?") and hypothetical movement fields for enemy units on our
 // turn, so it builds them here from the same rules:
-//   - terrain move cost (TERRAIN), impassable terrain, intact barred doors and
-//     ward anchors (blockingObjectAt) block;
+//   - terrain move cost (TERRAIN), impassable terrain, intact barred doors,
+//     ward anchors and closed gates (objectBlocksMovement) block;
 //   - tiles inside an enemy Bulwark cannot be entered;
 //   - a pinned duelist (isDueling && !canLeaveDuel) is confined to feastHall;
 //   - enemy units block movement, allies can be passed through.
@@ -14,10 +14,10 @@
 import {
   TERRAIN,
   ZONES,
-  blockingObjectAt,
   canLeaveDuel,
   domainTiles,
   isDueling,
+  objectBlocksMovement,
   terrainAt,
   zoneTiles,
   type GameState,
@@ -53,7 +53,7 @@ export function buildGrid(state: GameState): Grid {
       const p = { x, y };
       const t = terrainAt(state, p);
       const c = t ? TERRAIN[t].moveCost : null;
-      cost[y * w + x] = c === null || blockingObjectAt(state, p) ? -1 : c;
+      cost[y * w + x] = c === null || objectBlocksMovement(state, p) ? -1 : c;
     }
   }
   state.units.forEach((u, i) => {

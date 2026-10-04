@@ -10,6 +10,7 @@ import type {
   Exit,
   Faction,
   GameState,
+  GateObject,
   MapObject,
   Pos,
   Terrain,
@@ -78,6 +79,34 @@ export function bridgeAt(state: GameState, p: Pos): BridgeObject | undefined {
   return undefined;
 }
 
+export function gates(state: GameState): GateObject[] {
+  return state.map.objects.filter((o): o is GateObject => o.kind === 'gate');
+}
+
+/**
+ * The closed gate (portcullis) covering a tile, if any. A closed gate blocks
+ * movement, standing and spawning on its tiles, but not line of sight (it is a
+ * grate); it cannot be attacked. It opens when its wave arrives (bells.ts).
+ */
+export function closedGateAt(state: GameState, p: Pos): GateObject | undefined {
+  for (const o of state.map.objects) {
+    if (o.kind === 'gate' && !o.open && o.tiles.some((t) => posEq(t, p))) return o;
+  }
+  return undefined;
+}
+
+/** True when an object stops units entering a tile: an intact barred door or ward anchor, or a closed gate. */
+export function objectBlocksMovement(state: GameState, p: Pos): boolean {
+  for (const o of state.map.objects) {
+    if (o.kind === 'door' || o.kind === 'anchor') {
+      if (!o.destroyed && posEq(o.pos, p)) return true;
+    } else if (o.kind === 'gate') {
+      if (!o.open && o.tiles.some((t) => posEq(t, p))) return true;
+    }
+  }
+  return false;
+}
+
 export function anchors(state: GameState): AnchorObject[] {
   return state.map.objects.filter((o): o is AnchorObject => o.kind === 'anchor');
 }
@@ -86,12 +115,15 @@ export function bridges(state: GameState): BridgeObject[] {
   return state.map.objects.filter((o): o is BridgeObject => o.kind === 'bridge');
 }
 
-/** Tiles a unit can stand on, ignoring units: in bounds, passable terrain, no blocking object. */
+/**
+ * Tiles a unit can stand on, ignoring units: in bounds, passable terrain, no
+ * intact barred door or ward anchor, no closed gate.
+ */
 export function isStandable(state: GameState, p: Pos): boolean {
   if (!inBounds(state, p)) return false;
   const t = terrainAt(state, p);
   if (!t || TERRAIN[t].moveCost === null) return false;
-  return blockingObjectAt(state, p) === undefined;
+  return !objectBlocksMovement(state, p);
 }
 
 // --- zones -----------------------------------------------------------------

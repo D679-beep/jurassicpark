@@ -269,3 +269,46 @@ describe('Burn the canal bridges', () => {
     expect(st.waves[1]).toMatchObject({ spawned: true, arrivedRound: 9 });
   });
 });
+
+describe('multi-tile bridges burn as one', () => {
+  //        x: 0123456
+  const map = [
+    '.......', // 0
+    '~~~=~~~', // 1  span (3,1)
+    '~~===~~', // 2  landing deck (2,2) (3,2) (4,2)
+    '.......', // 3
+  ];
+  const tiles: [number, number][] = [[3, 1], [2, 2], [3, 2], [4, 2]];
+  const s = game(map, [rebel('r', 'soldier', [3, 3]), rebel('n', 'soldier', [3, 0]), rebel('on', 'soldier', [2, 2]), loyal('l', 'soldier', [6, 0])], {
+    objects: [{ id: 'big', kind: 'bridge', tiles, tags: ['barracksRoute'] }],
+  });
+
+  it('is one object: no auto bridges for its tiles, and either bank can burn it', () => {
+    expect(s.map.objects.filter((o) => o.kind === 'bridge').map((o) => o.id)).toEqual(['big']);
+    const burn = { interaction: 'burnBridge', targetId: 'big' };
+    expect(getLegalActions(s, 'r')).toContainEqual({ kind: 'interact', unitId: 'r', ...burn });
+    expect(getLegalActions(s, 'n')).toContainEqual({ kind: 'interact', unitId: 'n', ...burn });
+    // Standing on any of its tiles, you cannot burn it.
+    expect(getLegalActions(s, 'on').some((a) => a.kind === 'interact')).toBe(false);
+  });
+
+  it('turns every tile to water in one action and completes the bonus', () => {
+    const { state, events } = play(s, { kind: 'interact', unitId: 'n', interaction: 'burnBridge', targetId: 'big' });
+    for (const [x, y] of tiles) expect(state.map.terrain[y]![x], `(${x},${y})`).toBe('water');
+    expect(eventsOf(events, 'bridgeBurned')).toEqual([
+      { type: 'bridgeBurned', bridgeId: 'big', tiles: [{ x: 3, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 2 }, { x: 4, y: 2 }], byUnitId: 'n', cause: 'interact' },
+    ]);
+    expect(state.modifiers.bridgesBurned).toBe(true);
+    expect(getLegalActions(state, 'r').some((a) => a.kind === 'interact')).toBe(false);
+  });
+
+  it('burns whole when a Pyre touches only one of its tiles', () => {
+    const p = game(map, [rebel('grimm', 'ascendant', [6, 3], { character: 'grimm' }), loyal('l', 'soldier', [0, 0])], {
+      objects: [{ id: 'big', kind: 'bridge', tiles }],
+    });
+    // Only (4,2) is within 3 of (6,3).
+    const { state, events } = play(p, { kind: 'domain', unitId: 'grimm' });
+    expect(eventsOf(events, 'bridgeBurned')).toHaveLength(1);
+    for (const [x, y] of tiles) expect(state.map.terrain[y]![x]).toBe('water');
+  });
+});
