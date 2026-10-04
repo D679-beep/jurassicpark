@@ -6,6 +6,7 @@ import {
   createGame,
   pathTo,
   type Action,
+  type BellId,
   type GameEvent,
   type GameState,
   type Pos,
@@ -25,6 +26,9 @@ import {
 import { hideOverlay, showIntro, showResult } from './cards';
 import { describeEvent } from './eventText';
 import { Hud } from './hud';
+import { bellEra } from './hudModel';
+import type { Era, FxStepContext, Motion } from './gfx/types';
+import { SettingsStore, applySpeed, effectLifeScale } from './settings';
 import { computeBoardLayout, placeTooltip } from './layout';
 import { makeNameLookup } from './names';
 import { DOMAIN_STYLE } from './palette';
@@ -60,6 +64,8 @@ const AI_SPEED = 0.75;
 const DEFAULT_INTRO =
   'Midnight. The lanterns of Calderon go dark one by one. The Ashen Wolves hold the inner gates. The Emperor must fall before dawn.';
 
+const ERA_BY_BELL: Record<BellId, Era> = { firstBell: 'First Bell', secondBell: 'Second Bell', dawn: 'Dawn' };
+
 const BANNER_COLORS = {
   bell: '#e8c872',
   objective: '#9fe0a8',
@@ -88,6 +94,11 @@ export class GameController {
   private dprWatched = 0;
   /** Touch: the target tile whose forecast is showing (second tap attacks). */
   private touchPreview: Pos | null = null;
+  /** Speed and reduced-motion settings (persisted). */
+  private readonly settings = SettingsStore.fromWindow();
+  private motion: Motion = this.settings.motion;
+  /** The era the board shows: lags the state until the bell step plays (spec 3.4). */
+  private displayEra: Era;
   private readonly renderer: Renderer;
   private readonly hud: Hud;
   private readonly tooltip: HTMLDivElement;
@@ -97,6 +108,7 @@ export class GameController {
   constructor(private readonly opts: MountOptions) {
     injectStyles();
     this.state = createGame(opts.scenario);
+    this.displayEra = bellEra(this.state);
     this.renderer = new Renderer(opts.canvas);
     this.boardInner = ensureBoardInner(opts.canvas);
     this.tooltip = document.createElement('div');
@@ -110,10 +122,19 @@ export class GameController {
       onCommand: (key) => this.command(key),
       onDeselect: () => this.setSelection(NO_SELECTION),
       onNextUnit: () => this.cycle(1),
+      onSpeed: () => this.cycleSpeed(),
+    });
+    this.settings.subscribe((m) => {
+      this.motion = m;
+      this.hudDirty = true;
     });
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    document.addEventListener('visibilitychange', () => {
+      // No dt spike when the tab comes back.
+      if (!document.hidden) this.lastFrame = 0;
+    });
     requestAnimationFrame((t) => this.frame(t));
     if (opts.skipIntro) this.begin();
     else showIntro({ state: this.state, framing: opts.introText ?? DEFAULT_INTRO, onBegin: () => this.begin() });
@@ -135,6 +156,8 @@ export class GameController {
     if (this.aiTimer !== null) window.clearTimeout(this.aiTimer);
     this.aiTimer = null;
     this.state = createGame(this.opts.scenario);
+    this.displayEra = bellEra(this.state);
+    this.renderer.restart();
     this.selection = NO_SELECTION;
     this.queue.clear();
     this.overrides = emptyOverrides();
@@ -153,6 +176,7 @@ export class GameController {
 
   // --- applying actions ------------------------------------------------------------
 
+  /** Applies an action; `speed` is the AI pacing factor, the speed setting is applied on top (6.4). */
   private apply(action: Action, speed = 1): boolean {
     let result;
     try {
@@ -164,7 +188,7 @@ export class GameController {
     const prev = this.state;
     this.state = result.state;
     this.overrides = addPendingOverrides(this.overrides, prev, result.events);
-    this.queue.push(...stepsForEvents(result.events, speed));
+    this.queue.push(...applySpeed(stepsForEvents(result.events, speed), this.motion.speed));
     this.hudDirty = true;
     if (!this.queue.busy) window.setTimeout(() => this.onQueueDrained(), 0);
     return true;
@@ -250,8 +274,18 @@ export class GameController {
 
   // --- animation callbacks -------------------------------------------------------
 
+  private cycleSpeed(): void {
+    this.settings.cycleSpeed();
+  }
+
+  private stepContext(): FxStepContext {
+    return { state: this.state, overrides: this.overrides, now: performance.now(), motion: this.motion };
+  }
+
   private onStart(step: AnimStep): void {
     onStepStart(this.overrides, step);
+    if (step.event.type === 'bellRang') this.displayEra = ERA_BY_BELL[step.event.bell];
+    this.renderer.stepStarted(step, this.stepContext());
     const name = makeNameLookup(this.state);
     const line = describeEvent(step.event, name);
     if (line) this.hud.appendLog([line]);
@@ -261,12 +295,15 @@ export class GameController {
 
   private onEnd(step: AnimStep): void {
     onStepEnd(this.overrides, step);
+    this.renderer.stepEnded(step, this.stepContext());
   }
 
   private spawnEffects(step: AnimStep): void {
     const now = performance.now();
     const e: GameEvent = step.event;
+    const speed = this.motion.speed;
     const add = (fx: Effect): void => {
+      if (fx.kind !== 'banner') fx.life = Math.round(fx.life * effectLifeScale(fx.kind, speed));
       this.effects.push(fx);
     };
     switch (e.type) {
@@ -349,6 +386,12 @@ export class GameController {
   // --- frame loop ---------------------------------------------------------------------
 
   private frame(t: number): void {
+    if (document.hidden) {
+      // Nothing is drawn while the tab is hidden (9.6); the next visible frame starts a fresh dt.
+      this.lastFrame = 0;
+      requestAnimationFrame((tt) => this.frame(tt));
+      return;
+    }
     const dt = this.lastFrame === 0 ? 16 : Math.min(100, t - this.lastFrame);
     this.lastFrame = t;
     const wasBusy = this.queue.busy;
@@ -376,11 +419,20 @@ export class GameController {
       hoverPath,
       effects: this.effects,
       now,
+      era: this.displayEra,
+      motion: this.motion,
     });
     this.opts.canvas.classList.toggle('locked', this.locked);
     if (this.hudDirty) {
       this.hudDirty = false;
-      this.hud.update({ state: this.state, selection: this.selection, hover: this.hover, locked: this.locked, started: this.started });
+      this.hud.update({
+        state: this.state,
+        selection: this.selection,
+        hover: this.hover,
+        locked: this.locked,
+        started: this.started,
+        speed: this.motion.speed,
+      });
     }
     requestAnimationFrame((tt) => this.frame(tt));
   }
@@ -464,6 +516,8 @@ export class GameController {
         this.endTurn();
       } else if (k === 'w' || k === 'W') {
         this.command('wait');
+      } else if ((k === 's' || k === 'S') && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+        this.cycleSpeed();
       }
     });
   }

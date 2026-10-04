@@ -7,12 +7,15 @@ import { bellEra, nextBellText, nextWaveText, objectiveRows, tileInfo, unitGlyph
 import type { Pos } from '../engine';
 import { hpColor } from './palette';
 import type { Selection } from './selection';
+import { speedLabel, type Speed } from './settings';
 
 export interface HudCallbacks {
   onEndTurn(): void;
   onCommand(key: string): void;
   onDeselect(): void;
   onNextUnit(): void;
+  /** Cycle the animation speed (1x -> 2x -> instant). */
+  onSpeed(): void;
 }
 
 export interface HudView {
@@ -23,6 +26,8 @@ export interface HudView {
   locked: boolean;
   /** The intro card has been dismissed. */
   started: boolean;
+  /** Animation speed setting (shown on the speed button). */
+  speed: Speed;
 }
 
 const MAX_LOG = 300;
@@ -94,7 +99,7 @@ export class Hud {
       '<span style="color:#ff6b5b">✕ Dueling</span><span style="color:#8cdcff">◌ Sealed</span><span>▼ Drained</span>' +
       '</div>' +
       '<div class="legend"><span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> cycle units</span><span><kbd>Esc</kbd> deselect</span>' +
-      '<span><kbd>E</kbd> end turn</span><span><kbd>W</kbd> wait</span><span>Hover a target for the damage forecast</span></div>';
+      '<span><kbd>E</kbd> end turn</span><span><kbd>W</kbd> wait</span><span><kbd>S</kbd> animation speed</span><span>Hover a target for the damage forecast</span></div>';
 
     const onClick = (ev: MouseEvent): void => {
       const t = (ev.target as HTMLElement | null)?.closest('button');
@@ -103,6 +108,7 @@ export class Hud {
       if (cmd === 'endTurn') this.cb.onEndTurn();
       else if (cmd === 'deselect') this.cb.onDeselect();
       else if (cmd === 'next') this.cb.onNextUnit();
+      else if (cmd === 'speed') this.cb.onSpeed();
       else if (cmd) this.cb.onCommand(cmd);
     };
     root.addEventListener('click', onClick);
@@ -132,7 +138,11 @@ export class Hud {
     const off = !playerTurn || v.locked ? 'disabled' : '';
     this.set(
       this.sections.clock,
-      `<p class="title">${escapeHtml(s.scenarioName)}</p>` +
+      // Speed control (7.3); minimal inline styling until WS5 restyles it.
+      `<p class="title" style="display:flex;align-items:center;justify-content:space-between;gap:0.4rem">` +
+        `<span>${escapeHtml(s.scenarioName)}</span>` +
+        `<button class="speed" data-cmd="speed" aria-label="Animation speed" title="Animation speed (S)" ` +
+        `style="min-height:1.6rem;padding:0.1rem 0.5rem;font-size:0.78rem;flex:none">${escapeHtml(speedLabel(v.speed))}</button></p>` +
         `<div class="clock"><span>Round <b>${s.round}</b></span><span class="era">${bellEra(s)}</span>` +
         `<span class="phase-pill ${phaseCls}">${phaseText}</span></div>` +
         `<div class="turn-info small">Next: ${escapeHtml(nextBellText(s))}` +
