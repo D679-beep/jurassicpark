@@ -3,8 +3,9 @@
 // collapsible legend. The hovered-tile strip lives under the board.
 import { findUnit, type GameState } from '../engine';
 import { ChronicleLog, factionName, type LogLine } from './eventText';
-import { bellEra, nextBellText, nextWaveText, objectiveRows, tileInfo, unitGlyph, unitSummary, type TileInfo, type UnitSummary } from './hudModel';
-import type { Pos } from '../engine';
+import { bellEra, bellTrack, nextBellText, nextWaveText, objectiveRows, speakerLook, tileInfo, unitGlyph, unitSummary, type TileInfo, type UnitSummary } from './hudModel';
+import { icon, medallion, objectiveIcon, rankIcon, tokenIcon, type IconName } from './icons';
+import type { Pos, Unit } from '../engine';
 import { hpColor } from './palette';
 import type { Selection } from './selection';
 import { speedLabel, type Speed } from './settings';
@@ -88,18 +89,7 @@ export class Hud {
     // Open by default when the window is tall enough to spare the room.
     legend.open = window.innerHeight >= 860;
     root.appendChild(legend);
-    legend.innerHTML =
-      '<summary>Legend &amp; keys</summary>' +
-      '<div class="legend">' +
-      '<span><i style="background:#3e5f82;border:1px solid #b4c3d1"></i>Rebel</span>' +
-      '<span><i style="background:#dcb559;border:1px solid #fff"></i>Loyalist</span>' +
-      '<span>Ring = Ascendant</span><span>s/k/r Soldier/Kindled/Radiant</span>' +
-      '<span><i style="background:rgba(70,140,255,0.6)"></i>Move</span>' +
-      '<span><i style="background:rgba(255,72,60,0.7)"></i>Attack</span>' +
-      '<span style="color:#ff6b5b">✕ Dueling</span><span style="color:#8cdcff">◌ Sealed</span><span>▼ Drained</span>' +
-      '</div>' +
-      '<div class="legend"><span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> cycle units</span><span><kbd>Esc</kbd> deselect</span>' +
-      '<span><kbd>E</kbd> end turn</span><span><kbd>W</kbd> wait</span><span><kbd>S</kbd> animation speed</span><span>Hover a target for the damage forecast</span></div>';
+    legend.innerHTML = legendHtml();
 
     const onClick = (ev: MouseEvent): void => {
       const t = (ev.target as HTMLElement | null)?.closest('button');
@@ -112,6 +102,7 @@ export class Hud {
       else if (cmd) this.cb.onCommand(cmd);
     };
     root.addEventListener('click', onClick);
+    watchDialogue();
   }
 
   private set(el: HTMLElement, html: string): void {
@@ -136,17 +127,20 @@ export class Hud {
             ? 'Resolving…'
             : 'Your turn: click a rebel unit.';
     const off = !playerTurn || v.locked ? 'disabled' : '';
+    const track = bellTrack(s);
     this.set(
       this.sections.clock,
-      // Speed control (7.3); minimal inline styling until WS5 restyles it.
-      `<p class="title" style="display:flex;align-items:center;justify-content:space-between;gap:0.4rem">` +
-        `<span>${escapeHtml(s.scenarioName)}</span>` +
-        `<button class="speed" data-cmd="speed" aria-label="Animation speed" title="Animation speed (S)" ` +
-        `style="min-height:1.6rem;padding:0.1rem 0.5rem;font-size:0.78rem;flex:none">${escapeHtml(speedLabel(v.speed))}</button></p>` +
+      // Title row with the speed control (7.3), then the clock with the bell track.
+      `<div class="titlebar"><p class="title">${escapeHtml(s.scenarioName)}</p>` +
+        `<button class="speed" data-cmd="speed" aria-label="Animation speed" title="Animation speed (S)">` +
+        `${icon('speed')}<span>${escapeHtml(speedLabel(v.speed))}</span></button></div>` +
         `<div class="clock"><span>Round <b>${s.round}</b></span><span class="era">${bellEra(s)}</span>` +
+        `<span class="bells" role="img" aria-label="Bells rung: ${track.filter((b) => b.rung).length} of ${track.length}">${track
+          .map((b) => `<span class="${b.rung ? 'rung' : 'pending'}" title="${escapeHtml(b.name)}, round ${b.round}${b.rung ? ' (rung)' : ''}">${icon(b.rung ? 'bell' : 'bellOff')}</span>`)
+          .join('')}</span>` +
         `<span class="phase-pill ${phaseCls}">${phaseText}</span></div>` +
-        `<div class="turn-info small">Next: ${escapeHtml(nextBellText(s))}` +
-        (wave ? `<br><span class="muted">Reinforcements: ${escapeHtml(wave)}</span>` : '') +
+        `<div class="turn-info small">${icon('bell')}Next: ${escapeHtml(nextBellText(s))}` +
+        (wave ? `<br><span class="muted">${icon('banner')}Reinforcements: ${escapeHtml(wave)}</span>` : '') +
         `</div><div class="status${playerTurn && !v.locked && v.started ? ' yours' : ''}">${status}</div><div class="buttons">` +
         `<button data-cmd="next" ${off}>Next unit<kbd>Tab</kbd></button>` +
         `<button class="primary" data-cmd="endTurn" ${off}>End Turn<kbd>E</kbd></button>` +
@@ -164,7 +158,7 @@ export class Hud {
         : `<ul class="objectives">${rows
             .map(
               (r) =>
-                `<li class="${r.status}" title="${escapeHtml(r.hint)}"><span class="icon">${r.icon}</span>` +
+                `<li class="${r.status}" title="${escapeHtml(r.hint)}"><span class="icon" aria-label="${r.status}">${objectiveIcon(r.id, r.status)}</span>` +
                 `<span class="name">${escapeHtml(r.name)}</span><span class="type ${r.type}">${r.type}</span></li>`,
             )
             .join('')}</ul>`,
@@ -184,7 +178,8 @@ export class Hud {
       .map((c) => {
         const cls = c.kind === 'domain' ? 'domain' : c.kind === 'interact' ? 'interact' : '';
         const key = c.kind === 'wait' ? '<kbd>W</kbd>' : '';
-        return `<button class="${cls}" data-cmd="${escapeHtml(c.key)}" ${disabled}>${escapeHtml(c.label)}${key}</button>`;
+        const ic = c.kind === 'domain' ? icon('domain') : '';
+        return `<button class="${cls}" data-cmd="${escapeHtml(c.key)}" ${disabled}>${ic}${escapeHtml(c.label)}${key}</button>`;
       })
       .join('');
     return (
@@ -210,8 +205,11 @@ export class Hud {
       unitLine =
         `<div class="ti-unit"><span class="dot ${u.faction}"></span><b>${escapeHtml(u.name)}</b>` +
         `<span class="muted">${factionName(u.faction)} ${escapeHtml(u.rank)}</span>` +
-        `<span>HP <b>${u.hp}/${u.maxHp}</b></span><span>ATK ${u.atk}</span><span>DEF ${u.def}</span>` +
-        `<span>MOV ${u.move}</span><span>RNG ${escapeHtml(u.range)}</span>` +
+        stat('heart', 'HP', `<b>${u.hp}/${u.maxHp}</b>`) +
+        stat('sword', 'ATK', String(u.atk)) +
+        stat('shield', 'DEF', String(u.def)) +
+        stat('boot', 'MOV', String(u.move)) +
+        stat('target', 'RNG', escapeHtml(u.range)) +
         (extra.length ? `<span class="muted">${escapeHtml(extra.join(' · '))}</span>` : '') +
         `</div>`;
     }
@@ -254,15 +252,108 @@ export class Hud {
 function summaryHtml(sum: UnitSummary, glyph: string, asc: boolean): string {
   const ratio = sum.maxHp > 0 ? sum.hp / sum.maxHp : 0;
   const tags = [
-    ...sum.statuses.map((x) => `<span class="tag status">${escapeHtml(x)}</span>`),
+    ...sum.statuses.map((x) => {
+      const ic = STATUS_ICON[x];
+      return `<span class="tag status s-${x.toLowerCase()}">${ic ? icon(ic) : ''}${escapeHtml(x)}</span>`;
+    }),
     ...sum.notes.map((x) => `<span class="tag">${escapeHtml(x)}</span>`),
   ].join('');
+  const vals = [`${sum.hp}/${sum.maxHp}`, String(sum.atk), String(sum.def), String(sum.move), sum.range];
+  const stats = STAT_CELLS.map(
+    ([ic, short, long], i) => `<span title="${long}"><span class="lab">${icon(ic)}${short}</span><b>${escapeHtml(vals[i]!)}</b></span>`,
+  ).join('');
   return (
-    `<div class="unit-head"><span class="token ${sum.faction}${asc ? ' asc' : ''}">${escapeHtml(glyph)}</span>` +
+    `<div class="unit-head"><span class="token ${sum.faction}${asc ? ' asc' : ''}">${tokenSvg(sum.faction, glyph, asc)}</span>` +
     `<div><div class="name">${escapeHtml(sum.name)}</div><div class="small muted">${factionName(sum.faction)} ${escapeHtml(sum.rank)}${sum.turn ? ` · ${escapeHtml(sum.turn)}` : ''}</div></div></div>` +
     `<div class="hpbar"><div style="width:${Math.round(ratio * 100)}%;background:${hpColor(ratio)}"></div></div>` +
-    `<div class="stats"><span>HP<b>${sum.hp}/${sum.maxHp}</b></span><span>ATK<b>${sum.atk}</b></span>` +
-    `<span>DEF<b>${sum.def}</b></span><span>MOV<b>${sum.move}</b></span><span>RNG<b>${sum.range}</b></span></div>` +
+    `<div class="stats">${stats}</div>` +
     (tags ? `<div class="tags">${tags}</div>` : '')
   );
+}
+
+const STAT_CELLS: ReadonlyArray<readonly [IconName, string, string]> = [
+  ['heart', 'HP', 'Hit points'],
+  ['sword', 'ATK', 'Attack'],
+  ['shield', 'DEF', 'Defense'],
+  ['boot', 'MOV', 'Movement'],
+  ['target', 'RNG', 'Range'],
+];
+
+const STATUS_ICON: Record<string, IconName> = { Dueling: 'swords', Sealed: 'padlock', Drained: 'drop' };
+
+/** Compact stat for the tile strip: icon plus value, the label kept for screen readers and the tooltip. */
+function stat(ic: IconName, label: string, value: string): string {
+  const long = STAT_CELLS.find((c) => c[1] === label)?.[2] ?? label;
+  return `<span class="st" title="${long}">${icon(ic)}<span class="sr">${label} </span>${value}</span>`;
+}
+
+/** Selected-unit token: the board's plate shape (rhombus / circle) with the unit glyph; Ascendants get a double rim. */
+function tokenSvg(faction: Unit['faction'], glyph: string, asc: boolean): string {
+  const rebel = faction === 'rebel';
+  const fill = rebel ? '#3e5f82' : '#dcb559';
+  const rim = rebel ? '#b4c3d1' : '#fff7df';
+  const ink = rebel ? '#f0f4f8' : '#2a1c06';
+  const outer = rebel ? '#7fd6ff' : '#fff';
+  const shape = (r: number, attrs: string): string =>
+    rebel ? `<path d="M16 ${16 - r}L${16 + r} 16 16 ${16 + r} ${16 - r} 16z" ${attrs}/>` : `<circle cx="16" cy="16" r="${r}" ${attrs}/>`;
+  const r = rebel ? 13.4 : 12.4;
+  return (
+    `<svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">` +
+    (asc ? shape(r + 1.8, `fill="none" stroke="${outer}" stroke-width="1.3"`) : '') +
+    shape(asc ? r - 1.2 : r, `fill="${fill}" stroke="${rim}" stroke-width="2"`) +
+    `<text x="16" y="21.2" fill="${ink}">${escapeHtml(glyph)}</text></svg>`
+  );
+}
+
+const swatch = (bg: string): string => `<i style="background:${bg}"></i>`;
+const badge = (cls: string, ic: IconName, label: string): string => `<span class="badge ${cls}">${icon(ic)}<span>${label}</span></span>`;
+
+/** Legend: token shapes, rank silhouettes, highlights, status badges, keys (7.3). */
+function legendHtml(): string {
+  const rank = (r: 'soldier' | 'kindled' | 'radiant' | 'ascendant', label: string, hint: string): string =>
+    `<span title="${hint}">${rankIcon(r)}${label}</span>`;
+  return (
+    '<summary>Legend &amp; keys</summary>' +
+    '<div class="legend tokens">' +
+    `<span>${tokenIcon('rebel')}<span><b>Rebels</b><small>diamond base, eared hood</small></span></span>` +
+    `<span>${tokenIcon('loyalist')}<span><b>Loyalists</b><small>oval base, crested helm</small></span></span>` +
+    '</div>' +
+    '<div class="legend ranks">' +
+    rank('soldier', 'Soldier', 'Axe or spear, smallest') +
+    rank('kindled', 'Kindled', 'Glowing blade, pauldrons') +
+    rank('radiant', 'Radiant', 'Staff with an orb') +
+    rank('ascendant', 'Ascendant', 'Cape, circlet and a double rim') +
+    '</div>' +
+    '<div class="legend">' +
+    `<span>${swatch('rgba(70,140,255,0.6)')}Move</span><span>${swatch('rgba(255,72,60,0.7)')}Attack</span>` +
+    badge('dueling', 'swords', 'Dueling') +
+    badge('sealed', 'padlock', 'Sealed') +
+    badge('drained', 'drop', 'Drained') +
+    badge('escapee', 'arrowOut', 'Escapee') +
+    '</div>' +
+    '<div class="legend"><span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> cycle units</span><span><kbd>Esc</kbd> deselect</span>' +
+    '<span><kbd>E</kbd> end turn</span><span><kbd>W</kbd> wait</span><span><kbd>S</kbd> animation speed</span><span>Hover a target for the damage forecast</span></div>'
+  );
+}
+
+/**
+ * Gives the dialogue box (#dialogue, owned by the controller) its speaker
+ * medallion (7.2): whenever the controller writes `.speaker` / `.text`, the
+ * children are moved into a text column beside the medallion.
+ */
+function watchDialogue(): void {
+  const el = document.getElementById('dialogue');
+  if (!el || typeof MutationObserver !== 'function') return;
+  new MutationObserver(() => {
+    const first = el.firstElementChild;
+    if (!first || !first.classList.contains('speaker')) return;
+    const look = speakerLook(first.textContent ?? '');
+    const medal = document.createElement('span');
+    medal.className = `medal ${look.plate}`;
+    medal.innerHTML = medallion(look.plate, look.mark);
+    const body = document.createElement('div');
+    body.className = 'dlg-body';
+    while (el.firstChild) body.appendChild(el.firstChild);
+    el.append(medal, body);
+  }).observe(el, { childList: true });
 }
