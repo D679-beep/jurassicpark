@@ -126,6 +126,7 @@ export function rankIcon(rank: RankName): string {
 
 const OBJECTIVE_ICON: Record<ObjectiveId, IconName> = {
   killEmperor: 'crown',
+  holdUntilDawn: 'lantern',
   killElian: 'sun',
   imprisonMira: 'book',
   seizeBellTower: 'bell',

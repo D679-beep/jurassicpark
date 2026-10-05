@@ -1,5 +1,5 @@
 // Unit predicates and derived stats.
-import { RULES, TAG_NO_RESIST, ZONES } from './data';
+import { RULES, TAG_HERO, TAG_NO_RESIST, ZONES } from './data';
 import { findUnit, isInZone } from './map';
 import type { GameState, Status, Unit } from './types';
 
@@ -40,11 +40,41 @@ export function effectiveStats(u: Unit): EffectiveStats {
 }
 
 /**
- * Units that can never take unit actions this phase: sealed units and units
- * tagged noResist (the Emperor).
+ * Units that can never take unit actions this phase: sealed units, downed
+ * heroes and units tagged noResist (the Emperor).
  */
 export function isInert(u: Unit): boolean {
-  return hasStatus(u, 'sealed') || hasTag(u, TAG_NO_RESIST);
+  return hasStatus(u, 'sealed') || hasStatus(u, 'downed') || hasTag(u, TAG_NO_RESIST);
+}
+
+/** A hero (tag `hero`): downed instead of killed at 0 HP while it has a revive left. */
+export function isHero(u: Unit): boolean {
+  return hasTag(u, TAG_HERO);
+}
+
+/** A downed hero: 0 HP, on its tile, inert, untargetable, bleeding out. */
+export function isDowned(u: Unit): boolean {
+  return hasStatus(u, 'downed');
+}
+
+/** Whether a hit that takes `u` to 0 HP downs it (true) or kills it (false). */
+export function wouldBeDowned(u: Unit): boolean {
+  return isHero(u) && u.revives < RULES.maxRevives;
+}
+
+/**
+ * Round in which a unit downed right now bleeds out: at the start of its own
+ * side's phase, after its side has had RULES.bleedOutPhases phases to revive
+ * it. A fall during the other side's phase leaves the current round's own
+ * phase behind it; a fall during its own side's phase (in practice: round-start
+ * damage, before anyone acts) counts that phase as the first. For the rebels
+ * (who move first each round) that is round + 3 after a fall in the loyalist
+ * phase and round + 2 after one at round start.
+ */
+export function bleedOutRoundFor(state: GameState, u: Unit): number {
+  const ownPhase = u.faction === state.playerFaction ? 'player' : 'ai';
+  const ownPhaseAlreadyOver = ownPhase === 'player' && state.phase === 'ai';
+  return state.round + RULES.bleedOutPhases + (ownPhaseAlreadyOver ? 1 : 0);
 }
 
 /**

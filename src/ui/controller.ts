@@ -64,7 +64,8 @@ const AI_SPEED = 0.75;
 const DEFAULT_INTRO =
   'Midnight. The lanterns of Calderon go dark one by one. The Ashen Wolves hold the inner gates. The Emperor must fall before dawn.';
 
-const ERA_BY_BELL: Record<BellId, Era> = { firstBell: 'First Bell', secondBell: 'Second Bell', dawn: 'Dawn' };
+// The Third Bell keeps the Second Bell's lighting (no era of its own yet).
+const ERA_BY_BELL: Record<BellId, Era> = { firstBell: 'First Bell', secondBell: 'Second Bell', thirdBell: 'Second Bell', dawn: 'Dawn' };
 
 const BANNER_COLORS = {
   bell: '#e8c872',

@@ -3,7 +3,7 @@
 import { RULES, TAG_NO_RESIST } from './data';
 import { domainsAt, domainTiles, isInDomain } from './domains';
 import { findUnit } from './map';
-import { duelPartner, hasStatus, hasTag, isAscendant, isDuelActive } from './units';
+import { bleedOutRoundFor, duelPartner, hasStatus, hasTag, isAscendant, isDowned, isDuelActive, wouldBeDowned } from './units';
 import type {
   ActiveDomain,
   BridgeObject,
@@ -11,6 +11,7 @@ import type {
   DeathCause,
   DestructibleObject,
   DialogueTrigger,
+  Faction,
   GameEvent,
   GameState,
   RemovalReason,
@@ -38,6 +39,13 @@ export function emitDialogue(ctx: Ctx, trigger: DialogueTrigger): void {
   for (const line of lines) {
     emit(ctx, { type: 'dialogue', trigger, ...resolveSpeaker(ctx.state, line.speaker), text: line.text });
   }
+}
+
+/** Per-unit dialogue (`downed:<id>` / `revived:<id>`): lines keyed by the unit id, else by its character id. */
+function emitUnitDialogue(ctx: Ctx, kind: 'downed' | 'revived', unit: Unit): void {
+  const byId: DialogueTrigger = `${kind}:${unit.id}`;
+  if (ctx.state.dialogue[byId]) return emitDialogue(ctx, byId);
+  if (unit.character) emitDialogue(ctx, `${kind}:${unit.character}`);
 }
 
 // --- removal ---------------------------------------------------------------
@@ -81,7 +89,10 @@ export function killUnit(ctx: Ctx, unit: Unit, killerId: string | null, cause: D
 
 // --- damage & healing ------------------------------------------------------
 
-/** Applies final damage to a unit, emitting `damaged` and, at 0 HP, `died`. */
+/**
+ * Applies final damage to a unit, emitting `damaged` and, at 0 HP, `died` (or
+ * `downed` for a hero with a revive left). Downed units take no damage.
+ */
 export function damageUnit(
   ctx: Ctx,
   unit: Unit,
@@ -90,6 +101,7 @@ export function damageUnit(
   sourceId: string | null,
   roll: number | null,
 ): void {
+  if (isDowned(unit)) return;
   const hpBefore = unit.hp;
   unit.hp = Math.max(0, unit.hp - amount);
   emit(ctx, {
@@ -104,7 +116,53 @@ export function damageUnit(
     cause,
     roll,
   });
-  if (unit.hp <= 0) killUnit(ctx, unit, sourceId, cause);
+  if (unit.hp > 0) return;
+  if (wouldBeDowned(unit)) downUnit(ctx, unit, sourceId, cause);
+  else killUnit(ctx, unit, sourceId, cause);
+}
+
+// --- downed heroes -----------------------------------------------------------
+
+/** A hero at 0 HP falls downed: it stays on its tile, inert and untargetable, and starts to bleed out. */
+export function downUnit(ctx: Ctx, unit: Unit, sourceId: string | null, cause: DamageCause): void {
+  unit.hp = 0;
+  if (!hasStatus(unit, 'downed')) unit.statuses.push('downed');
+  unit.hasMoved = true;
+  unit.hasActed = true;
+  unit.bleedOutRound = bleedOutRoundFor(ctx.state, unit);
+  emit(ctx, {
+    type: 'downed',
+    unitId: unit.id,
+    name: unit.name,
+    faction: unit.faction,
+    pos: { ...unit.pos },
+    sourceId,
+    cause,
+    bleedOutRound: unit.bleedOutRound,
+  });
+  emitUnitDialogue(ctx, 'downed', unit);
+}
+
+/**
+ * Revive: the hero is back on its feet at ceil(maxHp * RULES.reviveHpFraction)
+ * HP but has spent this phase getting up (hasMoved = hasActed = true).
+ */
+export function reviveUnit(ctx: Ctx, unit: Unit, byUnitId: string): void {
+  unit.statuses = unit.statuses.filter((x) => x !== 'downed');
+  unit.hp = Math.min(unit.maxHp, Math.max(1, Math.ceil(unit.maxHp * RULES.reviveHpFraction)));
+  unit.bleedOutRound = null;
+  unit.revives += 1;
+  unit.hasMoved = true;
+  unit.hasActed = true;
+  emit(ctx, { type: 'revived', unitId: unit.id, byUnitId, pos: { ...unit.pos }, hpAfter: unit.hp });
+  emitUnitDialogue(ctx, 'revived', unit);
+}
+
+/** Phase-start step: every downed unit of `faction` whose time has run out bleeds out. */
+export function bleedOutDue(ctx: Ctx, faction: Faction): void {
+  const s = ctx.state;
+  const due = s.units.filter((u) => u.faction === faction && isDowned(u) && u.bleedOutRound !== null && u.bleedOutRound <= s.round);
+  for (const u of due) killUnit(ctx, u, null, 'bledOut');
 }
 
 /** Bulwark: allies of its owner (owner included) inside take half damage (floor, min 1). */
@@ -118,17 +176,19 @@ export function applyBulwark(state: GameState, target: Unit, amount: number): nu
 
 /**
  * Final amount of fixed Domain damage (Tempest, Pyre) to `target`, or null if
- * the target is immune: noResist units are immune to all damage, sealed units
- * to non-Ascendant sources. Bulwark halving applies; the Ascendant bonus/cap
- * apply only to attacks.
+ * the target is immune: noResist units and downed heroes are immune to all
+ * damage, sealed units to non-Ascendant sources. Bulwark halving applies; the
+ * Ascendant bonus/cap apply only to attacks.
  */
 export function domainDamageAmount(state: GameState, target: Unit, amount: number, source: Unit): number | null {
-  if (hasTag(target, TAG_NO_RESIST)) return null;
+  if (hasTag(target, TAG_NO_RESIST) || isDowned(target)) return null;
   if (hasStatus(target, 'sealed') && !isAscendant(source)) return null;
   return applyBulwark(state, target, amount);
 }
 
+/** Heals a unit up to its max HP. A downed unit is not healed (only a Revive gets it up). */
 export function healUnit(ctx: Ctx, unit: Unit, amount: number, sourceId: string): void {
+  if (isDowned(unit)) return;
   const healed = Math.min(amount, unit.maxHp - unit.hp);
   if (healed <= 0) return;
   unit.hp += healed;

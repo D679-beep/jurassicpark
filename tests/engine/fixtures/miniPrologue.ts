@@ -47,10 +47,10 @@ export function miniPrologue(): ScenarioDef {
       { id: 'tunnelExit', zone: 'servantsTunnel', tiles: [[21, 2]], units: ['elian'] },
     ],
     units: [
-      // Rebels
-      { id: 'varek', name: 'Varek', faction: 'rebel', rank: 'ascendant', character: 'varek', pos: [6, 5] },
+      // Rebels (Varek and Kaela are heroes: downed at 0 HP, revivable once)
+      { id: 'varek', name: 'Varek', faction: 'rebel', rank: 'ascendant', character: 'varek', pos: [6, 5], tags: ['hero'] },
       { id: 'grimm', name: 'Grimm', faction: 'rebel', rank: 'ascendant', character: 'grimm', pos: [8, 2], statuses: ['dueling'] },
-      { id: 'kaela', name: 'Kaela', faction: 'rebel', rank: 'kindled', character: 'kaela', pos: [6, 9] },
+      { id: 'kaela', name: 'Kaela', faction: 'rebel', rank: 'kindled', character: 'kaela', pos: [6, 9], tags: ['hero'] },
       { id: 'wolf1', name: 'Ashen Wolf', faction: 'rebel', rank: 'soldier', pos: [8, 5] },
       { id: 'wolf2', name: 'Ashen Wolf', faction: 'rebel', rank: 'soldier', pos: [10, 7] },
       { id: 'wolf3', name: 'Ashen Wolf', faction: 'rebel', rank: 'soldier', pos: [7, 9] },
@@ -90,7 +90,7 @@ export function miniPrologue(): ScenarioDef {
       {
         id: 'southernLegion',
         name: 'Southern Legion',
-        bell: 'dawn',
+        bell: 'thirdBell',
         spawnTiles: [[20, 5]],
         units: [{ id: 'legion1', faction: 'loyalist', rank: 'soldier' }],
       },

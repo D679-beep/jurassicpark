@@ -17,7 +17,7 @@ import { endTurn, evaluate } from './turn';
 import { isInert } from './units';
 import type { Action, ActionResult, GameState, InteractionKind, Unit } from './types';
 
-const INTERACTIONS: readonly InteractionKind[] = ['confront', 'capture', 'burnBridge', 'escape'];
+const INTERACTIONS: readonly InteractionKind[] = ['confront', 'capture', 'burnBridge', 'escape', 'revive'];
 
 /**
  * Every action the unit may take now, in a stable order: moves (row-major),

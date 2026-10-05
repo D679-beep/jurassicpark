@@ -67,15 +67,17 @@ export const DEFAULT_LEGEND: Readonly<Record<string, Terrain>> = {
   '^': 'dais',
 };
 
-export const BELL_ORDER: readonly BellId[] = ['firstBell', 'secondBell', 'dawn'];
+export const BELL_ORDER: readonly BellId[] = ['firstBell', 'secondBell', 'thirdBell', 'dawn'];
 export const DEFAULT_BELL_ROUNDS: Readonly<Record<BellId, number>> = {
   firstBell: 5,
   secondBell: 9,
-  dawn: 13,
+  thirdBell: 13,
+  dawn: 16,
 };
 export const BELL_NAMES: Readonly<Record<BellId, string>> = {
   firstBell: 'First Bell',
   secondBell: 'Second Bell',
+  thirdBell: 'Third Bell',
   dawn: 'Dawn',
 };
 
@@ -100,6 +102,12 @@ export const RULES = {
   nonAscendantCap: 1,
   rollMin: 0,
   rollMax: 2,
+  /** A revived hero comes back with ceil(maxHp * this) HP. */
+  reviveHpFraction: 0.5,
+  /** Revives allowed per hero per battle; a hero that falls again after them dies outright. */
+  maxRevives: 1,
+  /** Full phases of its own side a downed hero's allies get to revive it before it bleeds out. */
+  bleedOutPhases: 2,
 } as const;
 
 export const CHARACTER_DOMAINS: Readonly<Partial<Record<CharacterId, DomainKind>>> = {
@@ -126,9 +134,15 @@ export const BARRACKS_ROUTE_TAG = 'barracksRoute';
 export const TAG_NO_RESIST = 'noResist';
 export const TAG_ESCAPEE = 'escapee';
 export const TAG_ANCHOR_BREAKER = 'anchorBreaker';
+/**
+ * A unit its side cannot lose: at 0 HP it is downed instead of killed (once
+ * revivable, see RULES.maxRevives), and its death loses the battle for its side.
+ */
+export const TAG_HERO = 'hero';
 
 export const OBJECTIVE_INFO: Readonly<Record<ObjectiveId, { name: string; type: ObjectiveType }>> = {
   killEmperor: { name: 'Kill Emperor Halden', type: 'required' },
+  holdUntilDawn: { name: 'Hold the palace until Dawn', type: 'required' },
   killElian: { name: 'Kill Crown Prince Elian', type: 'optional' },
   imprisonMira: { name: 'Imprison Princess Mira', type: 'optional' },
   seizeBellTower: { name: 'Seize the bell tower', type: 'bonus' },
@@ -136,6 +150,7 @@ export const OBJECTIVE_INFO: Readonly<Record<ObjectiveId, { name: string; type: 
 };
 export const OBJECTIVE_ORDER: readonly ObjectiveId[] = [
   'killEmperor',
+  'holdUntilDawn',
   'killElian',
   'imprisonMira',
   'seizeBellTower',
@@ -144,7 +159,7 @@ export const OBJECTIVE_ORDER: readonly ObjectiveId[] = [
 
 export const FACTIONS: readonly Faction[] = ['rebel', 'loyalist'];
 export const RANKS: readonly Rank[] = ['soldier', 'kindled', 'radiant', 'ascendant'];
-export const STATUSES: readonly Status[] = ['sealed', 'dueling', 'drained'];
+export const STATUSES: readonly Status[] = ['sealed', 'dueling', 'drained', 'downed'];
 export const DOMAIN_KINDS: readonly DomainKind[] = ['tempest', 'pyre', 'bulwark', 'sanctuary', 'silence'];
 export const CHARACTER_IDS: readonly CharacterId[] = [
   'varek',

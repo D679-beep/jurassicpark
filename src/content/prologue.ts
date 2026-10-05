@@ -5,7 +5,8 @@ import type { DialogueLine, ObjectDef, ScenarioDef, UnitPlacement, WaveDef } fro
 /** Intro card text, shown before the battle (the engine has no hook for it). */
 export const prologueIntro =
   'Midnight. The lanterns of Calderon go dark one by one. The Ashen Wolves hold the inner gates, ' +
-  'and the Wellspring Hall is sealed with the Crown Prince inside. The Emperor must fall before dawn.';
+  'and the Wellspring Hall is sealed with the Crown Prince inside. The Emperor must fall, ' +
+  'and the palace must be held until dawn.';
 
 // Legend: # wall, . floor, + door, = barred door (an object sits on it), ~ water (canal and
 // the Wellspring pool), b bridge, o pillar, r rubble, T throne/dais, t banquet table,
@@ -75,9 +76,9 @@ const objects: ObjectDef[] = [
 ];
 
 const units: UnitPlacement[] = [
-  // Rebels (player)
-  { id: 'varek', name: 'Varek', faction: 'rebel', rank: 'ascendant', character: 'varek', pos: [15, 17] },
-  { id: 'kaela', name: 'Kaela', faction: 'rebel', rank: 'kindled', character: 'kaela', pos: [17, 18] },
+  // Rebels (player). Varek and Kaela are heroes: downed at 0 HP (revivable once), and losing either loses the battle.
+  { id: 'varek', name: 'Varek', faction: 'rebel', rank: 'ascendant', character: 'varek', pos: [15, 17], tags: ['hero'] },
+  { id: 'kaela', name: 'Kaela', faction: 'rebel', rank: 'kindled', character: 'kaela', pos: [17, 18], tags: ['hero'] },
   { id: 'grimm', name: 'Grimm', faction: 'rebel', rank: 'ascendant', character: 'grimm', pos: [4, 4], statuses: ['dueling'], stats: { def: 5 } },
   rebel('wolf-s1', 'soldier', [13, 17]),
   rebel('wolf-s2', 'soldier', [14, 19]),
@@ -126,13 +127,22 @@ const waves: WaveDef[] = [
     ],
   },
   {
+    // Third Bell: the Southern Legion comes in through the outer gate (open since the knights broke it at Second Bell).
     id: 'southernLegion',
     name: 'Southern Legion',
-    bell: 'dawn',
-    spawnTiles: [[21, 20], [22, 20], [25, 20], [26, 20]],
-    units: [1, 2, 3, 4].map((n) => ({ id: `legion-${n}`, name: 'Southern Legionnaire', faction: 'loyalist' as const, rank: 'soldier' as const })),
+    bell: 'thirdBell',
+    spawnTiles: [[22, 20], [25, 20], [21, 20], [26, 20], [23, 21], [24, 21], [22, 21], [25, 21]],
+    units: [
+      ...[1, 2, 3].map((n) => legionnaire(n, 'kindled')),
+      ...[4, 5].map((n) => legionnaire(n, 'radiant')),
+      ...[6, 7, 8].map((n) => legionnaire(n, 'soldier')),
+    ],
   },
 ];
+
+function legionnaire(n: number, rank: UnitPlacement['rank']): UnitPlacement {
+  return { id: `legion-${n}`, name: 'Southern Legionnaire', faction: 'loyalist', rank };
+}
 
 const line = (speaker: string, text: string): DialogueLine => ({ speaker, text });
 
@@ -181,5 +191,10 @@ export const prologueScenario: ScenarioDef = {
     ],
     firstBell: [line('Narrator', 'First Bell. The City Watch is at the palace gates, and they are not here to parade.')],
     secondBell: [line('Narrator', 'Second Bell. Dawn Lantern steel is through the outer gate, and the Radiants are with them.')],
+    thirdBell: [line('Narrator', 'Third Bell. The Southern Legion marches in through the outer gate. Hold until dawn.')],
+    'downed:varek': [line('varek', 'Not here. Not yet. Get me on my feet.')],
+    'downed:kaela': [line('kaela', 'I am down. Reach me, quickly.')],
+    'revived:varek': [line('varek', 'Again, then. Hold the line.')],
+    'revived:kaela': [line('kaela', 'Still breathing. Let us finish this.')],
   },
 };

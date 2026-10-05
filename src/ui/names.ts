@@ -64,6 +64,7 @@ export const STATUS_NAMES: Record<Status, string> = {
   sealed: 'Sealed',
   dueling: 'Dueling',
   drained: 'Drained',
+  downed: 'Downed',
 };
 
 export const INTERACTION_NAMES: Record<InteractionKind, string> = {
@@ -71,6 +72,7 @@ export const INTERACTION_NAMES: Record<InteractionKind, string> = {
   capture: 'Capture',
   burnBridge: 'Burn Bridge',
   escape: 'Escape',
+  revive: 'Revive',
 };
 
 /**

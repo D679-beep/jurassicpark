@@ -1,6 +1,27 @@
 // Scripted rebel strategies for the balance simulator. Each is a greedy
 // policy built from kit.ts Orders and re-planned every unit turn.
-import { findCharacter, findUnit, hasStatus, isInZone, manhattan, type GameState, type Pos, type Unit } from '../../src/engine';
+//
+// Since v0.5 the battle no longer ends with the Confront: the rebels must hold
+// until Dawn (or rout the loyalists), and Varek and Kaela fall downed instead
+// of dying. Every strategy that moves units therefore
+//   - revives downed heroes (withRevive: the nearest free rebel is sent to the
+//     hero and any rebel next to a downed hero revives it), and
+//   - after the Confront follows a hold policy (RushOptions.after).
+import {
+  effectiveStats,
+  findCharacter,
+  findUnit,
+  hasStatus,
+  isDowned,
+  isDueling,
+  isInert,
+  isInZone,
+  manhattan,
+  pathCost,
+  type GameState,
+  type Pos,
+  type Unit,
+} from '../../src/engine';
 import { adjacentTiles, enemiesWithin, ring, type Order } from './kit';
 
 /** Per-run scratch memory a strategy may use (plain object, reset per game). */
@@ -120,6 +141,133 @@ function holdTile(tile: Pos, risk = 0.4): Order {
   return { goals: [tile], goalWeight: 6, risk };
 }
 
+// --- after the Confront: hold until Dawn ---------------------------------------
+
+/**
+ * What the rebels do once the Emperor is dead:
+ *   throne  regroup on Varek in the Throne Hall (Kaela and her escorts walk back);
+ *   split   Varek holds the Throne Hall, Kaela and her escorts hold where they are;
+ *   hunt    go after the nearest loyalists (a try for an early rout).
+ */
+export type AfterConfront = 'throne' | 'split' | 'hunt';
+
+/** The Throne Hall rally point: in front of the dais, one step from the main door's line. */
+const THRONE_HOLD: Pos = P(15, 3);
+
+function nonInertFoes(s: GameState): Unit[] {
+  return s.units.filter((e) => e.faction === 'loyalist' && !isInert(e) && e.character !== 'mira');
+}
+
+/** Varek after the Confront: hold the Throne Hall and kill what comes in reach, or hunt. */
+function varekHold(s: GameState, after: AfterConfront): Order {
+  const varek = findCharacter(s, 'varek');
+  if (!varek) return { goals: [], risk: 0.3 };
+  if (after === 'hunt') {
+    const foes = nonInertFoes(s).filter((e) => !isDueling(s, e));
+    const near = foes.sort((a, b) => manhattan(a.pos, varek.pos) - manhattan(b.pos, varek.pos)).slice(0, 3);
+    return { goals: near.flatMap((e) => adjacentTiles(e.pos)), goalWeight: 4, risk: 0.3, domain: tempestPolicy };
+  }
+  return { ...escort(s, THRONE_HOLD, 0, 2, 0.3, 4), domain: tempestPolicy };
+}
+
+/** Kaela after Mira is resolved: stay alive. */
+function kaelaHold(s: GameState, after: AfterConfront): Order {
+  const varek = findCharacter(s, 'varek');
+  if (after === 'split' || !varek) return { goals: [], risk: 4, avoidLethal: true };
+  return { goals: ring(s, varek.pos, 1, 2), goalWeight: 3, risk: 4, avoidLethal: true };
+}
+
+/** A Wolf after the Confront: guard Varek (or Kaela, for her escorts in a split hold), or hunt. */
+function wolfHold(s: GameState, after: AfterConfront, guarding: 'varek' | 'kaela'): Order {
+  const varek = findCharacter(s, 'varek');
+  const kaela = findCharacter(s, 'kaela');
+  const ward = after === 'split' && guarding === 'kaela' && kaela ? kaela : varek ?? kaela;
+  if (!ward) return { goals: [], risk: 0.8 };
+  if (after === 'hunt') return escort(s, ward.pos, 1, 3, 0.6, 8);
+  return escort(s, ward.pos, 1, 3, 0.8, 4);
+}
+
+// --- reviving downed heroes ------------------------------------------------------
+
+const REVIVE_VALUE = 80000;
+
+/** Cheapest move cost for `u` to a free tile next to `p` (0 when already adjacent), or Infinity. */
+function costToAdjacent(s: GameState, u: Unit, p: Pos): number {
+  if (manhattan(u.pos, p) === 1) return 0;
+  let best = Infinity;
+  for (const t of adjacentTiles(p)) {
+    const c = pathCost(s, u.id, t, { ignoreMoveLimit: true });
+    if (c !== null && c < best) best = c;
+  }
+  return best;
+}
+
+/**
+ * For each downed rebel hero, the free rebel who goes to revive it: the one
+ * that gets next to it cheapest (the other hero only if nobody else can,
+ * Varek not at all while the Emperor lives). Grimm in the duel cannot help.
+ */
+export function reviveAssignments(s: GameState): Record<string, string> {
+  const out: Record<string, string> = {};
+  const downed = s.units.filter((u) => u.faction === 'rebel' && isDowned(u));
+  const taken = new Set<string>();
+  const haldenAlive = findCharacter(s, 'halden') !== undefined;
+  for (const hero of downed) {
+    let best: { id: string; cost: number } | null = null;
+    for (const u of s.units) {
+      if (u.faction !== 'rebel' || u.id === hero.id || isInert(u) || u.hasActed || isDueling(s, u) || taken.has(u.id)) continue;
+      if (u.character === 'varek' && haldenAlive) continue;
+      const cost = costToAdjacent(s, u, hero.pos) + (u.tags.includes('hero') ? 8 : 0);
+      if (cost === Infinity) continue;
+      if (!best || cost < best.cost) best = { id: u.id, cost };
+    }
+    if (best) {
+      out[best.id] = hero.id;
+      taken.add(best.id);
+    }
+  }
+  return out;
+}
+
+function reviveOrder(s: GameState, u: Unit, heroId: string): Order {
+  const hero = findUnit(s, heroId);
+  if (!hero) return { goals: [] };
+  const reachable = costToAdjacent(s, u, hero.pos) <= effectiveStats(u).move;
+  return {
+    goals: adjacentTiles(hero.pos),
+    goalWeight: 20,
+    // Getting there is worth some danger: the alternative is losing the battle.
+    risk: reachable ? 0.1 : 0.5,
+    interactions: [{ kind: 'revive', targetId: heroId, value: REVIVE_VALUE * 2 }],
+  };
+}
+
+/**
+ * Adds reviving to a strategy: revivers act first in the phase and head for
+ * their hero; every other unit may revive a downed hero it is standing next to.
+ */
+export function withRevive(strat: Strategy): Strategy {
+  return {
+    ...strat,
+    sequence: (s, mem) => {
+      const base = strat.sequence(s, mem);
+      const revivers = Object.keys(reviveAssignments(s));
+      mem.revivers = reviveAssignments(s);
+      return [...revivers, ...base.filter((id) => !revivers.includes(id))];
+    },
+    order: (s, id, mem) => {
+      const assigned = (mem.revivers as Record<string, string> | undefined)?.[id];
+      const u = findUnit(s, id);
+      if (assigned && u) {
+        const hero = findUnit(s, assigned);
+        if (hero && isDowned(hero)) return reviveOrder(s, u, assigned);
+      }
+      const o = strat.order(s, id, mem);
+      return { ...o, interactions: [...(o.interactions ?? []), { kind: 'revive', value: REVIVE_VALUE }] };
+    },
+  };
+}
+
 export type GrimmMode = 'passive' | 'fight' | 'leave';
 
 /** Grimm in the duel. */
@@ -147,9 +295,9 @@ export const endTurnOnly: Strategy = {
 };
 
 /** Everyone, Grimm included, runs straight at the Emperor and hits whatever is in reach. */
-export const charge: Strategy = {
+const chargeRaw: Strategy = {
   name: 'charge',
-  description: 'All-in forward charge: every unit (Grimm too) runs at the throne, attacks anything in reach.',
+  description: 'All-in forward charge: every unit (Grimm too) runs at the throne, attacks anything in reach; no plan after the Confront.',
   sequence: (s) => s.units.filter((u) => u.faction === 'rebel').map((u) => u.id),
   order: (s, id) => {
     const halden = findCharacter(s, 'halden');
@@ -159,14 +307,15 @@ export const charge: Strategy = {
     return followGoals(goals, 0);
   },
 };
+export const charge = withRevive(chargeRaw);
 
 /** Like charge, but Grimm stays in the duel and trades blows (the "obvious" naive line). */
-export const chargePinned: Strategy = {
+export const chargePinned = withRevive({
   name: 'chargePinned',
   description: 'Forward charge, Grimm keeps fighting the duel.',
-  sequence: charge.sequence,
-  order: (s, id) => (id === 'grimm' ? grimmOrder(s, 'fight') : charge.order(s, id, {})),
-};
+  sequence: chargeRaw.sequence,
+  order: (s, id, mem) => (id === 'grimm' ? grimmOrder(s, 'fight') : chargeRaw.order(s, id, mem)),
+});
 
 interface RushOptions {
   name: string;
@@ -188,9 +337,15 @@ interface RushOptions {
   wardens?: string[];
   /** Varek goes through the Wellspring Hall (breaking its barred doors) and kills the sealed Elian first. */
   elianFirst?: boolean;
+  /** What to do once the Emperor is dead (default: regroup in the Throne Hall). */
+  after?: AfterConfront;
 }
 
 function rush(o: RushOptions): Strategy {
+  return withRevive(rushRaw(o));
+}
+
+function rushRaw(o: RushOptions): Strategy {
   const assigned = new Set<string>([
     ...o.throne,
     ...o.mira,
@@ -220,18 +375,21 @@ function rush(o: RushOptions): Strategy {
       const mira = findCharacter(s, 'mira');
       const elian = findCharacter(s, 'elian');
       const varek = findCharacter(s, 'varek');
-      const kaela = findCharacter(s, 'kaela');
+      const after = o.after ?? 'throne';
       if (id === 'grimm') return grimmOrder(s, o.grimm);
       if (id === 'varek') {
         if (o.elianFirst && elian && halden) return varekElianFirst(s);
         if (halden) return varekToThrone(s);
         if (o.huntElian && elian) return varekHuntElian(s);
-        return kaela && mira ? escort(s, kaela.pos, 1, 2, 0.3) : { goals: [], risk: 0.3 };
+        return varekHold(s, after);
       }
-      if (id === 'kaela') return kaelaToMira(s);
-      if (o.mira.includes(id)) return mira ? escort(s, mira.pos, 1, 3, 0.8) : halden ? escort(s, halden.pos) : { goals: [] };
+      if (id === 'kaela') return mira ? kaelaToMira(s) : kaelaHold(s, halden ? 'split' : after);
+      if (o.mira.includes(id)) return mira ? escort(s, mira.pos, 1, 3, 0.8) : halden ? escort(s, halden.pos) : wolfHold(s, after, 'kaela');
       if (o.plug?.includes(id) && kaelaGaveUp(s)) return varek ? escort(s, varek.pos, 1, 2, 0.8) : { goals: [] };
-      if (o.plug?.includes(id)) return mira && isInZone(s, mira.pos, 'princessTower') ? holdTile(P(26, 9), 0.5) : mira ? escort(s, mira.pos, 1, 2, 0.6) : { goals: [] };
+      if (o.plug?.includes(id)) {
+        if (mira) return isInZone(s, mira.pos, 'princessTower') ? holdTile(P(26, 9), 0.5) : escort(s, mira.pos, 1, 2, 0.6);
+        return halden ? { goals: [] } : wolfHold(s, after, 'kaela');
+      }
       if (o.bellTower?.includes(id)) {
         // The bell tower's floor tiles; the great bell stands on (2,18).
         const tiles: Pos[] = [P(3, 18), P(4, 18), P(2, 19), P(3, 19), P(4, 19)];
@@ -264,7 +422,7 @@ function rush(o: RushOptions): Strategy {
           const t = doorTiles[i % doorTiles.length]!;
           return { goals: [t], goalWeight: 5, risk: 0.3, focus: { elian: 30 } };
         }
-        return halden ? escort(s, halden.pos) : mira ? escort(s, mira.pos) : { goals: [] };
+        return halden ? escort(s, halden.pos) : mira ? escort(s, mira.pos) : wolfHold(s, after, 'varek');
       }
       if (o.duelHelpers?.includes(id)) {
         const orsa = findCharacter(s, 'orsa');
@@ -283,7 +441,7 @@ function rush(o: RushOptions): Strategy {
         return { ...order, focus };
       }
       if (o.huntElian && elian) return { goals: ring(s, elian.pos, 1, 1), goalWeight: 4, risk: 0.3, focus: { elian: 30 } };
-      return { goals: [], risk: 0.8 };
+      return wolfHold(s, after, 'varek');
     },
   };
 }
@@ -384,10 +542,32 @@ export const bonusRush = rush({
 });
 
 /** Probe: Varek alone at the throne (the other Wolves idle at the gate). */
-export const varekSolo: Strategy = {
-  ...rush({ name: 'varekSolo', description: 'Varek alone to the throne; Kaela + 2 to Mira; the rest stay home.', grimm: 'fight', throne: [], mira: ['wolf-k3'], plug: ['wolf-s3'] }),
+export const varekSolo: Strategy = withRevive({
+  ...rushRaw({ name: 'varekSolo', description: 'Varek alone to the throne; Kaela + 2 to Mira; the rest stay home.', grimm: 'fight', throne: [], mira: ['wolf-k3'], plug: ['wolf-s3'] }),
   sequence: (s) => ['grimm', 'varek', 'kaela', 'wolf-k3', 'wolf-s3'].filter((id) => findUnit(s, id)),
-};
+});
+
+/** varekRush, but after the Confront Kaela's group holds where it is (the tower) instead of walking back. */
+export const rushSplitHold = rush({
+  name: 'rushSplitHold',
+  description: 'varekRush; after the Confront Varek holds the Throne Hall while Kaela and her two Wolves hold where they are.',
+  grimm: 'fight',
+  throne: THRONE_WOLVES,
+  mira: ['wolf-k3'],
+  plug: ['wolf-s3'],
+  after: 'split',
+});
+
+/** varekRush, but after the Confront everyone goes hunting (a try for a rout before Dawn). */
+export const rushHunt = rush({
+  name: 'rushHunt',
+  description: 'varekRush; after the Confront Varek and the Wolves hunt the nearest loyalists (a try for a rout), Kaela stays behind Varek.',
+  grimm: 'fight',
+  throne: THRONE_WOLVES,
+  mira: ['wolf-k3'],
+  plug: ['wolf-s3'],
+  after: 'hunt',
+});
 
 /** Probe: only Grimm plays (he fights the duel from the pillars); everyone else stays home. Measures the duel on its own. */
 export const duelOnly: Strategy = {
@@ -403,6 +583,8 @@ export const STRATEGIES: Strategy[] = [
   charge,
   chargePinned,
   varekRush,
+  rushSplitHold,
+  rushHunt,
   varekRushPassiveGrimm,
   grimmHelped,
   varekSolo,

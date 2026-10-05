@@ -18,7 +18,7 @@ import { domainsAt } from './domains';
 import { lineOfSight } from './los';
 import { findObject, findUnit, isDestructible, terrainDefense } from './map';
 import { rollInt } from './rng';
-import { duelPartner, effectiveStats, hasStatus, hasTag, isAscendant, isDueling, isInert } from './units';
+import { duelPartner, effectiveStats, hasStatus, hasTag, isAscendant, isDowned, isDueling, isInert } from './units';
 import type { DestructibleObject, GameState, Pos, Unit } from './types';
 
 export interface AttackTarget {
@@ -43,6 +43,7 @@ export function attackTargetProblem(state: GameState, attacker: Unit, targetId: 
     if (unitTarget.id === attacker.id) return 'cannot attack itself';
     if (unitTarget.faction === attacker.faction) return 'cannot attack an ally';
     if (hasTag(unitTarget, TAG_NO_RESIST)) return 'target cannot be damaged by attacks';
+    if (isDowned(unitTarget)) return 'a downed hero cannot be attacked';
     if (hasStatus(unitTarget, 'sealed') && !isAscendant(attacker)) return 'sealed target can only be harmed by an Ascendant';
     if (isDueling(state, attacker) && duelPartner(state, attacker)?.id !== unitTarget.id) {
       return 'a duelist may only attack the other duelist';
@@ -132,7 +133,8 @@ export function previewDamage(state: GameState, attackerId: string, targetId: st
   let hp: number;
   let kind: 'unit' | 'object';
   if (unitTarget) {
-    const immune = hasTag(unitTarget, TAG_NO_RESIST) || (hasStatus(unitTarget, 'sealed') && !isAscendant(attacker));
+    const immune =
+      hasTag(unitTarget, TAG_NO_RESIST) || isDowned(unitTarget) || (hasStatus(unitTarget, 'sealed') && !isAscendant(attacker));
     outcomes = rolls.map((r) => (immune ? 0 : unitAttackDamage(state, attacker, unitTarget, from, r)));
     hp = unitTarget.hp;
     kind = 'unit';

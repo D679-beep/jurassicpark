@@ -72,6 +72,10 @@ export function stepForEvent(e: GameEvent, speed = 1): AnimStep {
       return { kind: 'heal', duration: d(TIMING.heal), event: e };
     case 'died':
       return { kind: 'death', duration: d(TIMING.death), event: e };
+    case 'downed':
+      return { kind: 'pause', duration: d(TIMING.death), event: e };
+    case 'revived':
+      return { kind: 'heal', duration: d(TIMING.heal), event: e };
     case 'captured':
     case 'escaped':
       return { kind: 'remove', duration: d(TIMING.remove), event: e };
@@ -209,6 +213,13 @@ export function addPendingOverrides(base: DisplayOverrides, prev: GameState | nu
           seenHp.add(e.unitId);
         }
         break;
+      case 'revived':
+        // Downed heroes are at 0 HP until the revive plays.
+        if (!seenHp.has(e.unitId)) {
+          o.hp[e.unitId] = 0;
+          seenHp.add(e.unitId);
+        }
+        break;
       case 'died':
       case 'captured':
       case 'escaped': {
@@ -252,6 +263,9 @@ export function onStepStart(o: DisplayOverrides, step: AnimStep): void {
       o.hp[e.targetId] = e.hpAfter;
       break;
     case 'healed':
+      o.hp[e.unitId] = e.hpAfter;
+      break;
+    case 'revived':
       o.hp[e.unitId] = e.hpAfter;
       break;
     case 'objectDestroyed':

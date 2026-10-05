@@ -283,6 +283,7 @@ export function createGame(def: ScenarioDef): GameState {
     }
     const statuses = p.statuses ?? [];
     for (const s of statuses) if (!STATUSES.includes(s)) err(`${where}: unknown status "${s}"`);
+    if (statuses.includes('downed')) err(`${where}: units cannot start downed`);
     const tags = p.tags ?? [];
     if (!Array.isArray(tags) || tags.some((t) => typeof t !== 'string')) err(`${where}: tags must be strings`);
     let domain = p.domain === undefined ? (p.rank === 'ascendant' ? defaultDomainFor(p) : null) : p.domain;
@@ -335,6 +336,8 @@ export function createGame(def: ScenarioDef): GameState {
       domain,
       domainUsed: false,
       guardZone: p.guardZone ?? null,
+      bleedOutRound: null,
+      revives: 0,
     };
   };
 
@@ -421,6 +424,7 @@ export function createGame(def: ScenarioDef): GameState {
   const routeBridges = objects.filter((o) => o.kind === 'bridge' && o.tags.includes(BARRACKS_ROUTE_TAG));
   const prereq: Record<ObjectiveId, string | null> = {
     killEmperor: has('halden') && has('varek') ? null : 'requires characters "halden" and "varek"',
+    holdUntilDawn: has('halden') && has('varek') ? null : 'requires characters "halden" and "varek"',
     killElian: has('elian') ? null : 'requires character "elian"',
     imprisonMira: has('mira') ? null : 'requires character "mira"',
     seizeBellTower: zones[ZONES.bellTower] ? null : 'requires a "bellTower" zone',
@@ -439,9 +443,19 @@ export function createGame(def: ScenarioDef): GameState {
   }
 
   // --- dialogue ---
+  // Per-unit triggers (`downed:<id>`, `revived:<id>`) name a unit id or character id.
+  const unitKeys = new Set<string>([
+    ...units.flatMap((u) => [u.id, ...(u.character ? [u.character] : [])]),
+    ...waves.flatMap((w) => w.units.flatMap((u) => [u.id, ...(u.character ? [u.character] : [])])),
+  ]);
+  const validTrigger = (t: string): boolean => {
+    if (VALID_TRIGGERS.has(t)) return true;
+    const m = /^(downed|revived):(.+)$/.exec(t);
+    return m !== null && unitKeys.has(m[2]!);
+  };
   const dialogue: GameState['dialogue'] = {};
   for (const [trig, lines] of Object.entries(def.dialogue ?? {})) {
-    if (!VALID_TRIGGERS.has(trig)) err(`dialogue: unknown trigger "${trig}"`);
+    if (!validTrigger(trig)) err(`dialogue: unknown trigger "${trig}"`);
     if (!Array.isArray(lines) || lines.some((l) => typeof l?.speaker !== 'string' || typeof l?.text !== 'string')) {
       err(`dialogue "${trig}" must be an array of { speaker, text } strings`);
       continue;

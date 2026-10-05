@@ -50,7 +50,7 @@ export const POINTLESS_ATTACK = 2;
 export interface ScoredAction {
   kind: 'attack' | 'interact' | 'domain';
   targetId: string | null;
-  interaction?: 'confront' | 'capture' | 'escape' | 'burnBridge';
+  interaction?: 'confront' | 'capture' | 'escape' | 'burnBridge' | 'revive';
   value: number;
 }
 

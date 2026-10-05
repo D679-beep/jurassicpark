@@ -21,12 +21,16 @@ const fmt = (x: number | null, d = 1): string => (x === null ? '-' : x.toFixed(d
 const pct = (x: number): string => `${Math.round(x * 100)}%`;
 
 function table(rows: Summary[]): string {
-  const head = ['strategy', 'win', 'confront', 'conf rnd (min-max)', 'Elian K/E', 'Elian esc rnd', 'Mira C/E/D', 'Mira esc rnd', 'both', 'all 3', 'losses', 'Grimm dead (rnd)', 'Orsa dead (rnd, Grimm hp)', 'duel G/O', 'bell/bridges'];
+  const head = ['strategy', 'win', 'rout', 'rounds', 'confront', 'conf rnd (min-max)', 'Legion in/fought (killed)', 'downs/rev/bled', 'Elian K/E', 'Elian esc rnd', 'Mira C/E/D', 'Mira esc rnd', 'both', 'all 3', 'losses', 'Grimm dead (rnd)', 'Orsa dead (rnd, Grimm hp)', 'duel G/O', 'bell/bridges'];
   const body = rows.map((r) => [
     r.strategy,
     pct(r.winRate),
+    String(r.routs),
+    fmt(r.roundsMean),
     pct(r.confrontRate),
     r.confrontMean === null ? '-' : `${fmt(r.confrontMean)} (${r.confrontMin}-${r.confrontMax})`,
+    `${r.legionArrived}/${r.legionFought} (${fmt(r.legionKilledMean)})`,
+    `${fmt(r.downsMean)}/${fmt(r.revivesMean)}/${r.bledOut}`,
     `${r.elianKilled}/${r.elianEscaped}`,
     fmt(r.elianEscapeMean),
     `${r.miraCaptured}/${r.miraEscaped}/${r.miraDead}`,
@@ -48,6 +52,12 @@ function describeEvent(e: GameEvent): string | null {
   switch (e.type) {
     case 'died':
       return `${e.unitId} died (${e.cause}${e.killerId ? ` by ${e.killerId}` : ''})`;
+    case 'downed':
+      return `${e.unitId} DOWNED (${e.cause}${e.sourceId ? ` by ${e.sourceId}` : ''}; bleeds out r${e.bleedOutRound})`;
+    case 'revived':
+      return `${e.unitId} revived by ${e.byUnitId} (${e.hpAfter} HP)`;
+    case 'reinforcementsArrived':
+      return `${e.name} arrives (${e.units.length})`;
     case 'escaped':
       return `${e.unitId} escaped`;
     case 'captured':
@@ -120,7 +130,7 @@ export function main(argv: string[]): void {
     console.log('\nRuns:');
     for (const r of all) {
       console.log(
-        `  ${r.strategy} seed=${r.seed} ${r.result} r${r.endRound} confront=${r.confrontRound ?? '-'} elian=${r.elian}@${r.elianRound ?? '-'} mira=${r.mira}@${r.miraRound ?? '-'} lost=[${r.lost.join(',')}] grimm=${r.grimmDiedRound ?? '-'} orsa=${r.orsaDiedRound ?? '-'} duel=${r.duelWinner ?? '-'} seal=${r.sealBrokenRound ?? '-'}`,
+        `  ${r.strategy} seed=${r.seed} ${r.result} r${r.endRound} confront=${r.confrontRound ?? '-'} elian=${r.elian}@${r.elianRound ?? '-'} mira=${r.mira}@${r.miraRound ?? '-'} lost=[${r.lost.join(',')}] grimm=${r.grimmDiedRound ?? '-'} orsa=${r.orsaDiedRound ?? '-'} duel=${r.duelWinner ?? '-'} seal=${r.sealBrokenRound ?? '-'} downs=${r.downs} revives=${r.revives} legionHits=${r.legionHits} (${r.reason})`,
       );
     }
   }

@@ -1,17 +1,18 @@
-// Set-piece rules: interactions (Confront, Capture, Burn Bridge, Escape), the
-// Wellspring seal anchors, and the bell modifiers (bell tower, bridges).
+// Set-piece rules: interactions (Confront, Capture, Burn Bridge, Escape,
+// Revive), the Wellspring seal anchors, and the bell modifiers (bell tower,
+// bridges).
 import { BARRACKS_ROUTE_TAG, EMPEROR_LAST_WORDS, RULES, TAG_ESCAPEE, ZONES } from './data';
 import { manhattan, posEq } from './geometry';
 import { delayRemainingBells, waveArrivalRound } from './bells';
-import { breakSeal, burnBridge, emit, emitDialogue, killUnit, removeUnit, type Ctx } from './effects';
+import { breakSeal, burnBridge, emit, emitDialogue, killUnit, removeUnit, reviveUnit, type Ctx } from './effects';
 import { anchors, bridges, exitsAt, findCharacter, findObject, findUnit, hasZone, unitsInZone } from './map';
 import { getObjective } from './objectives';
-import { hasTag, isDueling, isInert } from './units';
+import { hasTag, isDowned, isDueling, isInert } from './units';
 import type { Faction, GameState, InteractionKind, Unit } from './types';
 
 export interface InteractionOption {
   interaction: InteractionKind;
-  /** Halden / Mira unit id, bridge object id, or exit id. */
+  /** Halden / Mira / downed-hero unit id, bridge object id, or exit id. */
   targetId: string;
 }
 
@@ -22,9 +23,10 @@ export interface InteractionOption {
  * - burnBridge: any unit orthogonally adjacent to an unburned bridge tile and
  *               not standing on that bridge.
  * - escape:     a unit tagged `escapee` standing on an exit tile it may use.
- * Every interaction uses the unit's action. Inert units, units that have
- * acted, and duelists (who may not affect anything outside the duel) cannot
- * interact.
+ * - revive:     any unit orthogonally adjacent to a downed ally.
+ * Every interaction uses the unit's action. Inert units (a downed Varek too),
+ * units that have acted, and duelists (who may not affect anything outside the
+ * duel) cannot interact.
  */
 export function availableInteractions(state: GameState, u: Unit): InteractionOption[] {
   if (isInert(u) || u.hasActed || isDueling(state, u)) return [];
@@ -48,6 +50,11 @@ export function availableInteractions(state: GameState, u: Unit): InteractionOpt
     for (const e of exitsAt(state, u.pos)) {
       const allowed = e.units.length === 0 || e.units.includes(u.id) || (u.character !== null && e.units.includes(u.character));
       if (allowed) out.push({ interaction: 'escape', targetId: e.id });
+    }
+  }
+  for (const ally of state.units) {
+    if (ally.faction === u.faction && ally.id !== u.id && isDowned(ally) && manhattan(u.pos, ally.pos) === 1) {
+      out.push({ interaction: 'revive', targetId: ally.id });
     }
   }
   return out;
@@ -86,6 +93,11 @@ export function performInteraction(ctx: Ctx, u: Unit, interaction: InteractionKi
       if (u.character === 'mira') emitDialogue(ctx, 'miraEscaped');
       return;
     }
+    case 'revive': {
+      const hero = findUnit(s, targetId);
+      if (hero) reviveUnit(ctx, hero, u.id);
+      return;
+    }
   }
 }
 
@@ -118,15 +130,16 @@ export function checkBridgesBonus(ctx: Ctx): void {
 }
 
 /**
- * Seize the bell tower: checked when the rebel phase ends. A rebel unit in
- * bellTower and no loyalist in it delays every bell not yet rung by 2 rounds.
- * One time only; requires the seizeBellTower objective to be in play.
+ * Seize the bell tower: checked when the rebel phase ends. A (standing, not
+ * downed) rebel unit in bellTower and no loyalist in it delays every bell not
+ * yet rung by 2 rounds. One time only; requires the seizeBellTower objective
+ * to be in play.
  */
 export function checkBellTower(ctx: Ctx, endingFaction: Faction): void {
   const s = ctx.state;
   if (endingFaction !== 'rebel' || s.modifiers.bellTowerSeized) return;
   if (!getObjective(s, 'seizeBellTower') || !hasZone(s, ZONES.bellTower)) return;
-  if (unitsInZone(s, ZONES.bellTower, 'rebel').length === 0) return;
+  if (unitsInZone(s, ZONES.bellTower, 'rebel').filter((u) => !isDowned(u)).length === 0) return;
   if (unitsInZone(s, ZONES.bellTower, 'loyalist').length > 0) return;
   s.modifiers.bellTowerSeized = true;
   delayRemainingBells(ctx, RULES.bellTowerDelay);

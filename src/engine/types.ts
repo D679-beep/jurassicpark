@@ -34,19 +34,24 @@ export type CharacterId =
   | 'sereth'
   | 'aren';
 export type DomainKind = 'tempest' | 'pyre' | 'bulwark' | 'sanctuary' | 'silence';
-export type Status = 'sealed' | 'dueling' | 'drained';
-export type BellId = 'firstBell' | 'secondBell' | 'dawn';
+/**
+ * `downed`: a hero (tag `hero`) at 0 HP. It stays on its tile, is inert, cannot
+ * be targeted or damaged, and bleeds out unless an adjacent ally Revives it.
+ */
+export type Status = 'sealed' | 'dueling' | 'drained' | 'downed';
+export type BellId = 'firstBell' | 'secondBell' | 'thirdBell' | 'dawn';
 export type ObjectiveId =
   | 'killEmperor'
+  | 'holdUntilDawn'
   | 'killElian'
   | 'imprisonMira'
   | 'seizeBellTower'
   | 'burnBridges';
 export type ObjectiveType = 'required' | 'optional' | 'bonus';
 export type ObjectiveStatus = 'pending' | 'completed' | 'failed';
-export type InteractionKind = 'confront' | 'capture' | 'burnBridge' | 'escape';
+export type InteractionKind = 'confront' | 'capture' | 'burnBridge' | 'escape' | 'revive';
 export type DamageCause = 'attack' | 'tempest' | 'pyre' | 'duel';
-export type DeathCause = DamageCause | 'confront';
+export type DeathCause = DamageCause | 'confront' | 'bledOut';
 
 export interface Pos {
   x: number;
@@ -86,6 +91,13 @@ export interface Unit {
   domainUsed: boolean;
   /** Zone an AI guard defends (informational, for the AI layer). */
   guardZone: string | null;
+  /**
+   * While `downed`: the round at whose start (the start of the unit's own
+   * side's phase) it bleeds out and dies unless revived first. Otherwise null.
+   */
+  bleedOutRound: number | null;
+  /** Times this unit has been revived this battle (heroes: at most RULES.maxRevives). */
+  revives: number;
 }
 
 export interface DoorObject {
@@ -239,7 +251,10 @@ export type DialogueTrigger =
   | 'bellTowerSeized'
   | 'bridgesBurned'
   | BellId
-  | `domain:${DomainKind}`;
+  | `domain:${DomainKind}`
+  /** A hero falls downed / is revived; the suffix is the unit id or character id. */
+  | `downed:${string}`
+  | `revived:${string}`;
 
 export interface GameResult {
   /** From the point of view of `playerFaction`. */
@@ -325,6 +340,29 @@ export interface HealedEvent {
   amount: number;
   hpAfter: number;
   sourceId: string;
+}
+
+/** A hero dropped to 0 HP and is downed instead of dying (the `damaged` event comes first). */
+export interface DownedEvent {
+  type: 'downed';
+  unitId: string;
+  name: string;
+  faction: Faction;
+  pos: Pos;
+  /** Who dealt the blow (null for fixed damage with no owner). */
+  sourceId: string | null;
+  cause: DamageCause;
+  /** The unit bleeds out at the start of its side's phase in this round unless revived. */
+  bleedOutRound: number;
+}
+
+/** A downed hero is back on its feet. */
+export interface RevivedEvent {
+  type: 'revived';
+  unitId: string;
+  byUnitId: string;
+  pos: Pos;
+  hpAfter: number;
 }
 
 export interface DiedEvent {
@@ -483,7 +521,9 @@ export type GameEvent =
   | BridgeBurnedEvent
   | SealBrokenEvent
   | DuelEndedEvent
-  | PhaseStartedEvent;
+  | PhaseStartedEvent
+  | DownedEvent
+  | RevivedEvent;
 
 export type GameEventType = GameEvent['type'];
 
@@ -577,7 +617,7 @@ export interface ScenarioDef {
   objects?: ObjectDef[];
   waves?: WaveDef[];
   exits?: ExitDef[];
-  /** Override the default bell rounds (5 / 9 / 13). */
+  /** Override the default bell rounds (5 / 9 / 13 / 16). */
   bells?: Partial<Record<BellId, number>>;
   /** Defaults to every objective whose prerequisites exist in the scenario. */
   objectives?: ObjectiveId[];

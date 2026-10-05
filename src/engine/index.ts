@@ -19,6 +19,7 @@ export {
   TAG_NO_RESIST,
   TAG_ESCAPEE,
   TAG_ANCHOR_BREAKER,
+  TAG_HERO,
   EMPEROR_LAST_WORDS,
   type RankStats,
   type TerrainInfo,
@@ -58,6 +59,10 @@ export {
   isAscendant,
   isEnemy,
   isInert,
+  isHero,
+  isDowned,
+  wouldBeDowned,
+  bleedOutRoundFor,
   isDuelActive,
   isDueling,
   duelPartner,
@@ -96,5 +101,5 @@ export {
   type NextBellInfo,
   type UpcomingWave,
 } from './bells';
-export { getObjective, decideGame } from './objectives';
+export { getObjective, decideGame, allWavesArrived, loyalistsRouted } from './objectives';
 export { availableInteractions, type InteractionOption } from './setpieces';

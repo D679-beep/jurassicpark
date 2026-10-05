@@ -11,9 +11,12 @@ import {
   exitsAt,
   findObject,
   getNextBell,
+  isDowned,
+  isHero,
   terrainAt,
   unitAt,
   upcomingWaves,
+  wouldBeDowned,
   zonesAt,
   type GameState,
   type ObjectiveId,
@@ -35,7 +38,8 @@ import {
 
 export type BellEra = 'Midnight' | 'First Bell' | 'Second Bell' | 'Dawn';
 
-const ERA_BY_BELL = { firstBell: 'First Bell', secondBell: 'Second Bell', dawn: 'Dawn' } as const;
+// The Third Bell keeps the Second Bell's era (lighting) for now.
+const ERA_BY_BELL = { firstBell: 'First Bell', secondBell: 'Second Bell', thirdBell: 'Second Bell', dawn: 'Dawn' } as const;
 
 /** The latest bell that has rung, or Midnight before any. */
 export function bellEra(state: GameState): BellEra {
@@ -62,6 +66,8 @@ export function nextWaveText(state: GameState): string | null {
 
 export const OBJECTIVE_HINTS: Record<ObjectiveId, string> = {
   killEmperor: 'Bring Varek beside the Emperor and Confront him before Dawn.',
+  holdUntilDawn:
+    'With the Emperor dead, keep Varek and Kaela alive until Dawn, or wipe out every loyalist once the Third Bell wave is in. Revive a downed hero from an adjacent tile.',
   killElian: 'Only an Ascendant can harm him while sealed. Fails if he escapes.',
   imprisonMira: 'Weaken her to half HP with Kaela, then Capture. Keep Wolves off her.',
   seizeBellTower: 'End a turn with a rebel in the bell tower and no loyalist there: bells delayed 2 rounds.',
@@ -130,6 +136,12 @@ export function unitSummary(state: GameState, u: Unit): UnitSummary {
     const active = activeDomainOf(state, u.id);
     if (active) notes.push(`${DOMAIN_NAMES[u.domain]} active, ${domainRoundsRemaining(state, active)} round(s) left`);
     else notes.push(`Domain: ${DOMAIN_NAMES[u.domain]}${u.domainUsed ? ' (spent)' : ''}`);
+  }
+  if (isDowned(u) && u.bleedOutRound !== null) {
+    const n = Math.max(0, u.bleedOutRound - state.round);
+    notes.push(`Downed: bleeds out in ${n} round${n === 1 ? '' : 's'} (start of round ${u.bleedOutRound}). An adjacent ally can Revive.`);
+  } else if (isHero(u)) {
+    notes.push(wouldBeDowned(u) ? 'Hero: falls Downed at 0 HP and can be Revived once.' : 'Hero, already revived: the next fall is fatal.');
   }
   if (u.tags.includes('noResist')) notes.push('Does not resist. Only Varek can Confront him.');
   if (u.tags.includes('anchorBreaker')) notes.push('Anchor breaker');

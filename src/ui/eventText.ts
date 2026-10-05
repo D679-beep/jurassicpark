@@ -52,8 +52,16 @@ export function describeEvent(e: GameEvent, name: NameLookup): LogLine | null {
     }
     case 'healed':
       return { text: `Sanctuary mends ${name(e.unitId)} for ${e.amount} (now ${e.hpAfter}).`, tone: 'heal' };
+    case 'downed':
+      return {
+        text: `${e.name} is down! An adjacent ally must Revive them before round ${e.bleedOutRound}, or they bleed out.`,
+        tone: 'death',
+      };
+    case 'revived':
+      return { text: `${name(e.byUnitId)} gets ${name(e.unitId)} back on their feet (${e.hpAfter} HP).`, tone: 'heal' };
     case 'died':
       if (e.cause === 'confront') return { text: `${e.name} is dead. The throne is empty.`, tone: 'death' };
+      if (e.cause === 'bledOut') return { text: `${e.name} bleeds out.`, tone: 'death' };
       if (e.killerId) return { text: `${e.name} is slain by ${name(e.killerId)}.`, tone: 'death' };
       return { text: `${e.name} falls.`, tone: 'death' };
     case 'objectDestroyed':

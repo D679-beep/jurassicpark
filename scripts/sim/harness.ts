@@ -29,20 +29,55 @@ export interface RunResult {
   sealBrokenRound: number | null;
   bellTowerRound: number | null;
   bridgesRound: number | null;
+  /** Heroes downed / revived / bled out. */
+  downs: number;
+  revives: number;
+  bledOut: number;
+  /** Round the Third Bell wave (Southern Legion) arrived, if it did. */
+  legionRound: number | null;
+  /** Attacks between a Legion unit and a rebel (either way). */
+  legionHits: number;
+  /** Legion units killed. */
+  legionKilled: number;
+  /** Victory by rout (every loyalist down before Dawn) rather than at Dawn. */
+  routed: boolean;
 }
 
 interface Tracker {
   round: number;
   r: RunResult;
+  /** Unit ids of the Third Bell waves. */
+  legion: Set<string>;
 }
 
 function track(t: Tracker, events: GameEvent[], s: GameState): void {
+  const rebel = (id: string | null): boolean =>
+    id !== null && (s.units.some((u) => u.id === id && u.faction === 'rebel') || s.removedUnits.some((x) => x.unit.id === id && x.unit.faction === 'rebel'));
   for (const e of events) {
     switch (e.type) {
       case 'phaseStarted':
         t.round = e.round;
         break;
+      case 'downed':
+        if (e.faction === 'rebel') t.r.downs++;
+        break;
+      case 'revived':
+        t.r.revives++;
+        break;
+      case 'reinforcementsArrived':
+        if (e.bell === 'thirdBell') t.r.legionRound ??= t.round;
+        break;
+      case 'damaged':
+        if (e.cause === 'attack' && e.targetKind === 'unit') {
+          if ((t.legion.has(e.targetId) && rebel(e.sourceId)) || (e.sourceId !== null && t.legion.has(e.sourceId) && rebel(e.targetId))) t.r.legionHits++;
+        }
+        break;
+      case 'gameOver':
+        t.r.routed = e.result === 'victory' && /routed/.test(e.reason);
+        break;
       case 'died':
+        if (t.legion.has(e.unitId)) t.r.legionKilled++;
+        if (e.cause === 'bledOut') t.r.bledOut++;
         if (e.cause === 'confront') t.r.confrontRound = t.round;
         if (e.faction === 'rebel') {
           t.r.rebelLosses++;
@@ -113,6 +148,7 @@ export function runGame(strat: Strategy, seed: number, opts: RunOptions = {}): R
   let s = createGame({ ...scenario, seed });
   const t: Tracker = {
     round: 1,
+    legion: new Set(s.waves.filter((w) => w.bell === 'thirdBell').flatMap((w) => w.units.map((u) => u.id))),
     r: {
       strategy: strat.name,
       seed,
@@ -134,6 +170,13 @@ export function runGame(strat: Strategy, seed: number, opts: RunOptions = {}): R
       sealBrokenRound: null,
       bellTowerRound: null,
       bridgesRound: null,
+      downs: 0,
+      revives: 0,
+      bledOut: 0,
+      legionRound: null,
+      legionHits: 0,
+      legionKilled: 0,
+      routed: false,
     },
   };
   const mem: Memory = {};
@@ -182,6 +225,18 @@ export interface Summary {
   duelOrsa: number;
   bellTower: number;
   bridges: number;
+  /** Mean rounds played (the round the battle ended in). */
+  roundsMean: number;
+  /** Runs in which the Third Bell wave arrived / traded blows with the rebels. */
+  legionArrived: number;
+  legionFought: number;
+  legionKilledMean: number;
+  /** Mean heroes downed / revived per run; total bleed-outs. */
+  downsMean: number;
+  revivesMean: number;
+  bledOut: number;
+  /** Victories by rout (before Dawn). */
+  routs: number;
   reasons: Record<string, number>;
 }
 
@@ -220,6 +275,14 @@ export function summarize(name: string, runs: RunResult[]): Summary {
     duelOrsa: runs.filter((r) => r.duelWinner === 'orsa').length,
     bellTower: runs.filter((r) => r.bellTowerRound !== null).length,
     bridges: runs.filter((r) => r.bridgesRound !== null).length,
+    roundsMean: mean(runs.map((r) => r.endRound)) ?? 0,
+    legionArrived: runs.filter((r) => r.legionRound !== null).length,
+    legionFought: runs.filter((r) => r.legionHits > 0).length,
+    legionKilledMean: mean(runs.map((r) => r.legionKilled)) ?? 0,
+    downsMean: mean(runs.map((r) => r.downs)) ?? 0,
+    revivesMean: mean(runs.map((r) => r.revives)) ?? 0,
+    bledOut: runs.reduce((n, r) => n + r.bledOut, 0),
+    routs: runs.filter((r) => r.routed).length,
     reasons,
   };
 }
