@@ -182,6 +182,22 @@ export const OVERLAY = {
   plateEdge: 'rgba(232,200,114,0.32)',
   zoneOutline: 'rgba(232,200,114,0.35)',
   zoneLabel: 'rgba(232,200,114,0.62)',
+  // Interactions (Confront, Capture, burn a bridge): amber fill, edge and a diamond mark, never the attack red.
+  interact: 'rgba(255,196,64,0.34)',
+  interactEdge: '#ffcf4a',
+  /** Walk-up target (the Emperor out of reach this turn): the same amber, fainter. */
+  approach: 'rgba(255,196,64,0.16)',
+  /** A move tile from which an interaction becomes possible: dashed amber frame and corner mark. */
+  stand: '#ffcf4a',
+  // Enemy reach: purple with diagonal hatching (the hatching keeps it readable without colour); one step per overlapping enemy, three at most.
+  threat: ['rgba(176,72,214,0.16)', 'rgba(176,72,214,0.26)', 'rgba(176,72,214,0.36)'],
+  threatEdge: 'rgba(214,132,240,0.9)',
+  threatHatch: 'rgba(224,160,244,0.5)',
+  // The crown on the Emperor's tile.
+  mark: '#ffd24a',
+  markEdge: '#fff1b8',
+  markCase: 'rgba(8,8,14,0.92)',
+  markRing: [255, 210, 74] as const,
 } as const;
 
 export const STATUS = {

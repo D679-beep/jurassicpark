@@ -1,8 +1,9 @@
 // DOM HUD inside #hud: clock and bells, turn controls, selected unit with
 // command buttons, objectives, event log (scrolls inside its panel) and a
 // collapsible legend. The hovered-tile strip lives under the board.
-import { findUnit, type GameState } from '../engine';
+import { domainUnavailableReason, findUnit, type GameState } from '../engine';
 import { ChronicleLog, factionName, type LogLine } from './eventText';
+import type { Guidance } from './guidance';
 import { bellEra, bellTrack, nextBellText, nextWaveText, objectiveRows, speakerLook, tileInfo, unitGlyph, unitSummary, type TileInfo, type UnitSummary } from './hudModel';
 import { icon, medallion, objectiveIcon, rankIcon, tokenIcon, type IconName } from './icons';
 import type { Pos, Unit } from '../engine';
@@ -17,6 +18,12 @@ export interface HudCallbacks {
   onNextUnit(): void;
   /** Cycle the animation speed (1x -> 2x -> instant). */
   onSpeed(): void;
+  /** Take back the last move. */
+  onUndo(): void;
+  /** Show or hide the enemy threat overlay. */
+  onThreat(): void;
+  /** Open the help dialog. */
+  onHelp(): void;
 }
 
 export interface HudView {
@@ -29,6 +36,16 @@ export interface HudView {
   started: boolean;
   /** Animation speed setting (shown on the speed button). */
   speed: Speed;
+  /** Why the controls are locked, for the tooltip of a disabled button (null when they are not). */
+  lockReason: string | null;
+  /** Undo: null when a move can be taken back, else the reason it cannot. */
+  undoReason: string | null;
+  /** The enemy reach overlay is on. */
+  threatOn: boolean;
+  /** End Turn was pressed once while units could still act: the next press ends the turn. */
+  endTurnArmed: boolean;
+  /** The live line for the required objective (null when the scenario has none). */
+  guidance: Guidance | null;
 }
 
 const MAX_LOG = 300;
@@ -40,6 +57,7 @@ export function escapeHtml(s: string): string {
 export class Hud {
   private readonly sections: Record<'clock' | 'unit' | 'objectives', HTMLElement>;
   private readonly log: HTMLUListElement;
+  private readonly noticeEl: HTMLDivElement;
   private readonly chronicle = new ChronicleLog();
   private readonly logItems = new WeakMap<LogLine, HTMLLIElement>();
   private readonly cache = new Map<HTMLElement, string>();
@@ -70,6 +88,12 @@ export class Hud {
       unit: mk('unit-panel', 'Selected'),
       objectives: mk('objectives-panel', 'Objectives'),
     };
+    // Short messages ("why nothing happened", the end-turn warning) live outside the
+    // cached clock markup so the live region survives re-renders.
+    this.noticeEl = document.createElement('div');
+    this.noticeEl.className = 'notice';
+    this.noticeEl.setAttribute('role', 'status');
+    this.sections.clock.parentElement?.appendChild(this.noticeEl);
     const logBody = mk('log-panel', 'Chronicle');
     this.log = document.createElement('ul');
     this.log.id = 'log';
@@ -99,6 +123,9 @@ export class Hud {
       else if (cmd === 'deselect') this.cb.onDeselect();
       else if (cmd === 'next') this.cb.onNextUnit();
       else if (cmd === 'speed') this.cb.onSpeed();
+      else if (cmd === 'undo') this.cb.onUndo();
+      else if (cmd === 'threat') this.cb.onThreat();
+      else if (cmd === 'help') this.cb.onHelp();
       else if (cmd) this.cb.onCommand(cmd);
     };
     root.addEventListener('click', onClick);
@@ -126,7 +153,12 @@ export class Hud {
           : v.locked
             ? 'Resolving…'
             : 'Your turn: click a rebel unit.';
-    const off = !playerTurn || v.locked ? 'disabled' : '';
+    const lockedNow = !playerTurn || v.locked;
+    const off = lockedNow ? 'disabled' : '';
+    const why = lockedNow && v.lockReason ? escapeHtml(v.lockReason) : '';
+    const tip = (enabledTitle: string): string => ` title="${why || escapeHtml(enabledTitle)}"`;
+    const undoOff = lockedNow || v.undoReason !== null;
+    const undoTitle = escapeHtml(v.undoReason ?? (why || 'Take back the last move (U or Ctrl+Z)'));
     const track = bellTrack(s);
     this.set(
       this.sections.clock,
@@ -142,8 +174,13 @@ export class Hud {
         `<div class="turn-info small">${icon('bell')}Next: ${escapeHtml(nextBellText(s))}` +
         (wave ? `<br><span class="muted">${icon('banner')}Reinforcements: ${escapeHtml(wave)}</span>` : '') +
         `</div><div class="status${playerTurn && !v.locked && v.started ? ' yours' : ''}">${status}</div><div class="buttons">` +
-        `<button data-cmd="next" ${off}>Next unit<kbd>Tab</kbd></button>` +
-        `<button class="primary" data-cmd="endTurn" ${off}>End Turn<kbd>E</kbd></button>` +
+        `<button data-cmd="next" ${off}${tip('Select the next unit that can still act (Tab)')}>Next unit<kbd>Tab</kbd></button>` +
+        `<button class="primary${v.endTurnArmed ? ' armed' : ''}" data-cmd="endTurn" ${off}${tip('End your turn (E)')}>` +
+        `${v.endTurnArmed ? 'Press again' : 'End Turn'}<kbd>E</kbd></button>` +
+        `</div><div class="tools">` +
+        `<button data-cmd="undo" aria-keyshortcuts="U Control+Z" ${undoOff ? 'disabled' : ''} title="${undoTitle}">Undo<kbd>U</kbd></button>` +
+        `<button data-cmd="threat" aria-pressed="${v.threatOn}" aria-keyshortcuts="T" title="Show or hide the tiles the loyalists can attack next turn (T)">${icon('target')}Threat<kbd>T</kbd></button>` +
+        `<button data-cmd="help" aria-keyshortcuts="H ?" title="How to play (H or ?)">Help<kbd>H</kbd></button>` +
         `</div>`,
     );
 
@@ -151,6 +188,10 @@ export class Hud {
     this.set(this.tileEl, this.tileHtml(v));
 
     const rows = objectiveRows(s);
+    const g = v.guidance;
+    const guide = g
+      ? `<div class="guide tone-${g.tone}${g.kind === 'ready' ? ' ready' : ''}" role="status"><span class="guide-ic">${icon('crown')}</span><span>${escapeHtml(g.text)}</span></div>`
+      : '';
     this.set(
       this.sections.objectives,
       rows.length === 0
@@ -161,8 +202,13 @@ export class Hud {
                 `<li class="${r.status}" title="${escapeHtml(r.hint)}"><span class="icon" aria-label="${r.status}">${objectiveIcon(r.id, r.status)}</span>` +
                 `<span class="name">${escapeHtml(r.name)}</span><span class="type ${r.type}">${r.type}</span></li>`,
             )
-            .join('')}</ul>`,
+            .join('')}</ul>${guide}`,
     );
+  }
+
+  /** Shows a short message under the turn buttons (null clears it). */
+  setNotice(text: string | null): void {
+    if (this.noticeEl.textContent !== (text ?? '')) this.noticeEl.textContent = text ?? '';
   }
 
   private unitHtml(v: HudView): string {
@@ -174,16 +220,25 @@ export class Hud {
     if (!u) return '<div class="muted small">No unit selected.</div>';
     const sum = unitSummary(s, u);
     const disabled = v.locked ? 'disabled' : '';
-    const buttons = v.selection.commands
+    const sel = v.selection;
+    const buttons = sel.commands
       .map((c) => {
         const cls = c.kind === 'domain' ? 'domain' : c.kind === 'interact' ? 'interact' : '';
         const key = c.kind === 'wait' ? '<kbd>W</kbd>' : '';
         const ic = c.kind === 'domain' ? icon('domain') : '';
-        return `<button class="${cls}" data-cmd="${escapeHtml(c.key)}" ${disabled}>${ic}${escapeHtml(c.label)}${key}</button>`;
+        const hint = c.kind === 'interact' ? sel.interactions.find((t) => t.key === c.key)?.hint : undefined;
+        const title = hint ? ` title="${escapeHtml(hint)}"` : '';
+        return `<button class="${cls}" data-cmd="${escapeHtml(c.key)}" ${disabled}${title}>${ic}${escapeHtml(c.label)}${key}</button>`;
       })
       .join('');
+    // Say why the Domain is not on offer instead of silently dropping the button (a spent Domain is already in the summary).
+    const domainWhy =
+      u.rank === 'ascendant' && !u.domainUsed && !sel.commands.some((c) => c.kind === 'domain') ? domainUnavailableReason(v.state, u) : null;
+    const onMap = sel.interactions.some((t) => t.kind === 'unit') || sel.approaches.length > 0;
     return (
       summaryHtml(sum, unitGlyph(u), u.rank === 'ascendant') +
+      (domainWhy ? `<div class="small muted why">Domain unavailable: ${escapeHtml(domainWhy)}.</div>` : '') +
+      (onMap ? '<div class="small muted why">You can also click the amber target on the map.</div>' : '') +
       `<div class="buttons">${buttons}<button data-cmd="deselect" ${disabled}>Deselect<kbd>Esc</kbd></button></div>`
     );
   }
@@ -305,7 +360,7 @@ function tokenSvg(faction: Unit['faction'], glyph: string, asc: boolean): string
   );
 }
 
-const swatch = (bg: string): string => `<i style="background:${bg}"></i>`;
+const swatch = (cls: string): string => `<i class="sw ${cls}" aria-hidden="true"></i>`;
 const badge = (cls: string, ic: IconName, label: string): string => `<span class="badge ${cls}">${icon(ic)}<span>${label}</span></span>`;
 
 /** Legend: token shapes, rank silhouettes, highlights, status badges, keys (7.3). */
@@ -325,14 +380,16 @@ function legendHtml(): string {
     rank('ascendant', 'Ascendant', 'Cape, circlet and a double rim') +
     '</div>' +
     '<div class="legend">' +
-    `<span>${swatch('rgba(70,140,255,0.6)')}Move</span><span>${swatch('rgba(255,72,60,0.7)')}Attack</span>` +
+    `<span>${swatch('sw-move')}Move</span><span>${swatch('sw-attack')}Attack</span><span>${swatch('sw-interact')}Interact</span>` +
+    `<span>${swatch('sw-threat')}Enemy reach</span><span>${swatch('sw-crown')}Emperor</span>` +
     badge('dueling', 'swords', 'Dueling') +
     badge('sealed', 'padlock', 'Sealed') +
     badge('drained', 'drop', 'Drained') +
     badge('escapee', 'arrowOut', 'Escapee') +
     '</div>' +
     '<div class="legend"><span><kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> cycle units</span><span><kbd>Esc</kbd> deselect</span>' +
-    '<span><kbd>E</kbd> end turn</span><span><kbd>W</kbd> wait</span><span><kbd>S</kbd> animation speed</span><span>Hover a target for the damage forecast</span></div>'
+    '<span><kbd>E</kbd> end turn</span><span><kbd>W</kbd> wait</span><span><kbd>U</kbd> undo move</span><span><kbd>T</kbd> enemy reach</span>' +
+    '<span><kbd>S</kbd> animation speed</span><span><kbd>H</kbd> help</span><span>Hover a target for the damage forecast</span></div>'
   );
 }
 

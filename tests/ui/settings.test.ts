@@ -57,7 +57,15 @@ describe('settings parsing', () => {
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings('not json')).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings('{"speed":"9x","reduceMotion":"maybe"}')).toEqual(DEFAULT_SETTINGS);
-    expect(parseSettings('{"speed":"instant","reduceMotion":"on"}')).toEqual({ speed: 'instant', reduceMotion: 'on' });
+    expect(parseSettings('{"speed":"instant","reduceMotion":"on"}')).toEqual({ speed: 'instant', reduceMotion: 'on', confirmEndTurn: true });
+  });
+
+  it('defaults the end-turn safeguard on and only accepts a real boolean for it', () => {
+    expect(DEFAULT_SETTINGS.confirmEndTurn).toBe(true);
+    expect(parseSettings('{"confirmEndTurn":false}').confirmEndTurn).toBe(false);
+    expect(parseSettings('{"confirmEndTurn":true}').confirmEndTurn).toBe(true);
+    expect(parseSettings('{"confirmEndTurn":"no"}').confirmEndTurn).toBe(true);
+    expect(parseSettings('{"speed":"2x"}').confirmEndTurn).toBe(true);
   });
 
   it('cycles speeds 1x -> 2x -> instant -> 1x with readable labels', () => {
@@ -158,7 +166,7 @@ describe('SettingsStore', () => {
     const seen: string[] = [];
     const off = store.subscribe((m) => seen.push(`${m.speed}/${m.reduced}`));
     expect(store.cycleSpeed()).toBe('instant');
-    expect(JSON.parse(storage.getItem(SETTINGS_KEY)!)).toEqual({ speed: 'instant', reduceMotion: 'system' });
+    expect(JSON.parse(storage.getItem(SETTINGS_KEY)!)).toEqual({ speed: 'instant', reduceMotion: 'system', confirmEndTurn: true });
     media.set(true);
     expect(store.motion.reduced).toBe(true);
     store.setReduceMotion('off');
@@ -166,6 +174,24 @@ describe('SettingsStore', () => {
     off();
     store.setSpeed('1x');
     expect(seen).toEqual(['instant/false', 'instant/true', 'instant/false']);
+  });
+
+  it('persists and announces the end-turn safeguard toggle without touching motion', () => {
+    const storage = new MemoryStorage();
+    const store = new SettingsStore(storage, null);
+    const m = store.motion;
+    const seen: boolean[] = [];
+    store.subscribe((_m, s) => seen.push(s.confirmEndTurn));
+    store.setConfirmEndTurn(false);
+    store.setConfirmEndTurn(false); // no change, no event
+    expect(store.settings.confirmEndTurn).toBe(false);
+    expect(JSON.parse(storage.getItem(SETTINGS_KEY)!).confirmEndTurn).toBe(false);
+    expect(store.motion).toBe(m);
+    store.setConfirmEndTurn(true);
+    expect(seen).toEqual([false, true]);
+    // A fresh store reads the stored choice back.
+    store.setConfirmEndTurn(false);
+    expect(new SettingsStore(storage, null).settings.confirmEndTurn).toBe(false);
   });
 
   it('keeps the motion object identity until something changes', () => {

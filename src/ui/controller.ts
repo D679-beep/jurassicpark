@@ -5,6 +5,7 @@ import {
   applyAction,
   createGame,
   pathTo,
+  unitAt,
   type Action,
   type BellId,
   type GameEvent,
@@ -24,10 +25,14 @@ import {
   type DisplayOverrides,
 } from './animation';
 import { hideOverlay, showIntro, showResult } from './cards';
+import { END_TURN_CONFIRM_MS, decideEndTurn, isArmed } from './endTurnGuard';
 import { describeEvent } from './eventText';
+import { emperorGuidance, markState, type Guidance } from './guidance';
+import { HelpDialog } from './help';
 import { Hud } from './hud';
 import { bellEra } from './hudModel';
-import type { Era, FxStepContext, Motion } from './gfx/types';
+import { resolveFollowUp, type FollowUp } from './interactions';
+import type { BoardMark, Era, FxStepContext, Motion } from './gfx/types';
 import { SettingsStore, applySpeed } from './settings';
 import { computeBoardLayout, placeTooltip } from './layout';
 import { makeNameLookup } from './names';
@@ -35,18 +40,22 @@ import { Renderer, type Effect } from './renderer';
 import type { BannerEmblem, BannerTone } from './gfx/fx';
 import {
   NO_SELECTION,
-  attackForecast,
   clickTile,
   cycleSelection,
-  forecastText,
+  intentAt,
   isMoveTile,
   isPlayerTurn,
+  readyUnitIds,
   refreshSelection,
-  targetAt,
+  selectNextReadyAfter,
+  selectUnit,
   type Selection,
 } from './selection';
 import { STYLES } from './styles';
 import { escapeHtml } from './hud';
+import { buildThreatView, overlayAll, overlayFor, type ThreatOverlay, type ThreatView } from './threatView';
+import { tooltipFor, type TooltipModel } from './tooltipModel';
+import { NO_UNDO, popUndo, recordPlayerAction, reverseMove, undoUnavailableReason, undoableMove, type UndoStack } from './undo';
 
 export interface MountOptions {
   canvas: HTMLCanvasElement;
@@ -61,6 +70,17 @@ export interface MountOptions {
 
 const AI_DELAY_MS = 160;
 const AI_SPEED = 0.75;
+/** How long a "why nothing happened" notice stays up. */
+const NOTICE_MS = 6000;
+const NO_MARKS: readonly BoardMark[] = [];
+
+interface GuidanceMemo {
+  state: GameState;
+  selectedId: string | null;
+  g: Guidance | null;
+  /** The crown marker by state, so the renderer gets a stable array. */
+  marks: Record<BoardMark['state'], readonly BoardMark[]>;
+}
 const DEFAULT_INTRO =
   'Midnight. The lanterns of Calderon go dark one by one. The Ashen Wolves hold the inner gates. The Emperor must fall before dawn.';
 
@@ -94,6 +114,20 @@ export class GameController {
   private dprWatched = 0;
   /** Touch: the target tile whose forecast is showing (second tap attacks). */
   private touchPreview: Pos | null = null;
+  /** Moves that can be taken back (U / Ctrl+Z); emptied by any other player action and at end of turn. */
+  private undo: UndoStack = NO_UNDO;
+  /** The interaction to perform when the walk-up move being animated has finished. */
+  private followUp: FollowUp | null = null;
+  /** Enemy reach overlay (T). */
+  private threatOn = false;
+  private threatMemo: { state: GameState; view: ThreatView; all: ThreatOverlay | null; one: ThreatOverlay | null } | null = null;
+  /** When End Turn was first pressed with units still able to act (null = not armed). */
+  private endTurnArmedAt: number | null = null;
+  private noticeTimer: number | null = null;
+  /** Live line and crown marker for the required objective, recomputed when the state or selection changes. */
+  private guidanceMemo: GuidanceMemo | null = null;
+  /** Steps that must not be logged (the walk back of an undo). */
+  private readonly silentSteps = new WeakSet<AnimStep>();
   /** Speed and reduced-motion settings (persisted). */
   private readonly settings = SettingsStore.fromWindow();
   private motion: Motion = this.settings.motion;
@@ -104,6 +138,7 @@ export class GameController {
   private readonly tooltip: HTMLDivElement;
   private readonly dialogue: HTMLDivElement;
   private readonly boardInner: HTMLElement;
+  private readonly help: HelpDialog;
 
   constructor(private readonly opts: MountOptions) {
     injectStyles();
@@ -123,7 +158,11 @@ export class GameController {
       onDeselect: () => this.setSelection(NO_SELECTION),
       onNextUnit: () => this.cycle(1),
       onSpeed: () => this.cycleSpeed(),
+      onUndo: () => this.undoMove(),
+      onThreat: () => this.toggleThreat(),
+      onHelp: () => this.help.toggle(),
     });
+    this.help = new HelpDialog(() => this.state, this.settings);
     this.settings.subscribe((m) => {
       this.motion = m;
       this.hudDirty = true;
@@ -164,6 +203,14 @@ export class GameController {
     this.effects = [];
     this.aiActions = 0;
     this.resultShown = false;
+    this.undo = NO_UNDO;
+    this.followUp = null;
+    this.endTurnArmedAt = null;
+    this.touchPreview = null;
+    this.threatMemo = null;
+    this.guidanceMemo = null;
+    this.setNotice(null);
+    this.help.close();
     this.hideDialogue();
     this.hud.clearLog();
     hideOverlay();
@@ -176,14 +223,17 @@ export class GameController {
 
   // --- applying actions ------------------------------------------------------------
 
-  /** Applies an action; `speed` is the AI pacing factor, the speed setting is applied on top (6.4). */
-  private apply(action: Action, speed = 1): boolean {
+  /**
+   * Applies an action; `speed` is the AI pacing factor, the speed setting is applied on top (6.4).
+   * Returns the events it produced, or null if the engine rejected it.
+   */
+  private apply(action: Action, speed = 1): GameEvent[] | null {
     let result;
     try {
       result = applyAction(this.state, action);
     } catch (e) {
       console.error('[ui] action rejected by the engine', action, e);
-      return false;
+      return null;
     }
     const prev = this.state;
     this.state = result.state;
@@ -191,20 +241,87 @@ export class GameController {
     this.queue.push(...applySpeed(stepsForEvents(result.events, speed), this.motion.speed));
     this.hudDirty = true;
     if (!this.queue.busy) window.setTimeout(() => this.onQueueDrained(), 0);
-    return true;
+    return result.events;
   }
 
-  private playerAction(action: Action): void {
+  /** A player action. `followUp` is an interaction to perform once this move has finished walking. */
+  private playerAction(action: Action, followUp: FollowUp | null = null): void {
     if (this.locked) return;
     this.hideTooltip();
-    this.apply(action);
+    this.setNotice(null);
+    this.endTurnArmedAt = null;
+    const before = this.state;
+    const events = this.apply(action);
+    if (!events) return;
+    this.undo = recordPlayerAction(this.undo, before, this.state, action, events);
+    this.followUp = followUp;
   }
 
   private endTurn(): void {
     if (this.locked) return;
+    const d = decideEndTurn({
+      readyCount: readyUnitIds(this.state).length,
+      enabled: this.settings.settings.confirmEndTurn,
+      armedAt: this.endTurnArmedAt,
+      now: performance.now(),
+    });
+    this.endTurnArmedAt = d.armedAt;
+    if (!d.proceed) {
+      // The warning is the notice; it and the armed button expire together.
+      this.setNotice(d.message, END_TURN_CONFIRM_MS);
+      return;
+    }
+    this.setNotice(null);
+    this.undo = NO_UNDO;
+    this.followUp = null;
     this.selection = NO_SELECTION;
     this.aiActions = 0;
     this.apply({ kind: 'endTurn' });
+  }
+
+  /** Takes back the last move (U / Ctrl+Z): the unit walks back and the state before the move returns. */
+  private undoMove(): void {
+    if (this.locked) return;
+    const entry = undoableMove(this.state, this.undo);
+    if (!entry) {
+      this.setNotice(undoUnavailableReason(this.state, this.undo) ?? 'Nothing to undo.');
+      return;
+    }
+    this.hideTooltip();
+    this.setNotice(null);
+    this.endTurnArmedAt = null;
+    this.undo = popUndo(this.undo);
+    const ev = reverseMove(entry);
+    const prev = this.state;
+    this.state = entry.before;
+    this.overrides = addPendingOverrides(this.overrides, prev, [ev]);
+    const steps = applySpeed(stepsForEvents([ev]), this.motion.speed);
+    for (const s of steps) this.silentSteps.add(s);
+    this.queue.push(...steps);
+    this.hud.appendLog([{ text: `${makeNameLookup(this.state)(entry.unitId)} steps back: move undone.`, tone: 'info' }]);
+    this.selection = selectUnit(this.state, entry.unitId);
+    this.hudDirty = true;
+    if (!this.queue.busy) window.setTimeout(() => this.onQueueDrained(), 0);
+  }
+
+  private toggleThreat(): void {
+    this.threatOn = !this.threatOn;
+    this.hudDirty = true;
+  }
+
+  /** Shows a short message under the turn buttons for `ms` (null clears it). */
+  private setNotice(text: string | null, ms = NOTICE_MS): void {
+    if (this.noticeTimer !== null) window.clearTimeout(this.noticeTimer);
+    this.noticeTimer = null;
+    this.hud.setNotice(text);
+    this.hudDirty = true;
+    if (text) {
+      this.noticeTimer = window.setTimeout(() => {
+        this.noticeTimer = null;
+        this.hud.setNotice(null);
+        this.hudDirty = true;
+      }, ms);
+    }
   }
 
   private command(key: string): void {
@@ -239,10 +356,27 @@ export class GameController {
       return;
     }
     if (this.state.phase === 'ai') {
+      this.followUp = null;
       this.scheduleAi();
       return;
     }
-    this.selection = refreshSelection(this.state, this.selection);
+    // A walk-up (move, then interact): the move has finished, perform the interaction the engine now offers.
+    const followUp = this.followUp;
+    this.followUp = null;
+    if (followUp) {
+      const action = resolveFollowUp(this.state, followUp);
+      if (action) {
+        this.selection = refreshSelection(this.state, this.selection);
+        this.playerAction(action);
+        return;
+      }
+      this.setNotice('That is no longer possible from there.');
+    }
+    const prev = this.selection;
+    let next = refreshSelection(this.state, prev);
+    // The unit has nothing left to do: hand the selection to the next one that does.
+    if (prev.mode === 'unit' && next.mode === 'none') next = selectNextReadyAfter(this.state, prev.unitId);
+    this.selection = next;
     this.updateTooltip();
   }
 
@@ -266,7 +400,7 @@ export class GameController {
     }
     this.aiActions++;
     if (d.action.kind === 'endTurn') this.aiActions = 0;
-    if (!this.apply(d.action, AI_SPEED)) {
+    if (this.apply(d.action, AI_SPEED) === null) {
       // The engine rejected it despite validation: end the phase so the game goes on.
       this.apply({ kind: 'endTurn' }, AI_SPEED);
     }
@@ -287,7 +421,7 @@ export class GameController {
     if (step.event.type === 'bellRang') this.displayEra = ERA_BY_BELL[step.event.bell];
     this.renderer.stepStarted(step, this.stepContext());
     const name = makeNameLookup(this.state);
-    const line = describeEvent(step.event, name);
+    const line = this.silentSteps.has(step) ? null : describeEvent(step.event, name);
     if (line) this.hud.appendLog([line]);
     this.spawnEffects(step);
     this.hudDirty = true;
@@ -375,6 +509,7 @@ export class GameController {
     if (showHighlights && sel.mode === 'unit' && this.hover && isMoveTile(sel, this.hover)) {
       hoverPath = pathTo(this.state, sel.unitId, this.hover);
     }
+    const guide = this.guidance();
     this.renderer.draw({
       state: this.state,
       overrides: this.overrides,
@@ -383,6 +518,8 @@ export class GameController {
       showHighlights,
       hover: this.hover,
       hoverPath,
+      threat: showHighlights ? this.threatOverlay() : null,
+      marks: this.marks(guide, showHighlights),
       effects: this.effects,
       now,
       era: this.displayEra,
@@ -398,9 +535,61 @@ export class GameController {
         locked: this.locked,
         started: this.started,
         speed: this.motion.speed,
+        lockReason: this.lockReason(),
+        undoReason: undoUnavailableReason(this.state, this.undo),
+        threatOn: this.threatOn,
+        endTurnArmed: isArmed(this.endTurnArmedAt, now),
+        guidance: guide.g,
       });
     }
     requestAnimationFrame((tt) => this.frame(tt));
+  }
+
+  /** Why the controls are disabled right now (for button tooltips). */
+  private lockReason(): string | null {
+    if (!this.locked) return null;
+    if (!this.started) return 'Begin the battle first.';
+    if (this.state.gameOver) return 'The battle is over.';
+    if (!isPlayerTurn(this.state)) return 'The loyalists are moving. You act again when their phase ends.';
+    return 'Wait for the animation to finish.';
+  }
+
+  /** The required-objective guidance for the current state and selection (memoised). */
+  private guidance(): GuidanceMemo {
+    const selectedId = this.selection.mode === 'unit' ? this.selection.unitId : null;
+    const m = this.guidanceMemo;
+    if (m && m.state === this.state && m.selectedId === selectedId) return m;
+    const g = emperorGuidance(this.state, selectedId);
+    const marks = (state: BoardMark['state']): readonly BoardMark[] =>
+      g?.target ? [{ kind: 'crown', pos: { ...g.target }, state, label: 'Confront' }] : NO_MARKS;
+    this.guidanceMemo = { state: this.state, selectedId, g, marks: { idle: marks('idle'), reachable: marks('reachable'), ready: marks('ready') } };
+    return this.guidanceMemo;
+  }
+
+  /** The crown on the Emperor: it only glows while the player can act on it. */
+  private marks(guide: GuidanceMemo, interactive: boolean): readonly BoardMark[] {
+    return guide.marks[interactive ? markState(guide.g) : 'idle'];
+  }
+
+  /** The tint to draw: a hovered enemy's own reach, else the whole enemy reach when T is on. */
+  private threatOverlay(): ThreatOverlay | null {
+    const hovered = this.hover ? unitAt(this.state, this.hover) : undefined;
+    const enemy = hovered && hovered.faction !== this.state.playerFaction ? hovered : undefined;
+    // An enemy the selection can attack already has its forecast; leave the board uncluttered.
+    const isTarget = enemy && intentAt(this.selection, enemy.pos)?.kind === 'attack';
+    const wantOne = enemy && !isTarget;
+    if (!this.threatOn && !wantOne) return null;
+    let m = this.threatMemo;
+    if (!m || m.state !== this.state) {
+      m = { state: this.state, view: buildThreatView(this.state), all: null, one: null };
+      this.threatMemo = m;
+    }
+    if (wantOne) {
+      if (m.one?.unitId !== enemy.id) m.one = overlayFor(m.view, enemy.id);
+      if (m.one) return m.one;
+    }
+    if (!this.threatOn) return null;
+    return (m.all ??= overlayAll(m.view));
   }
 
   // --- input -------------------------------------------------------------------------
@@ -458,49 +647,69 @@ export class GameController {
         this.updateTooltip();
         return;
       }
-      if (this.lastPointer === 'touch' && targetAt(this.selection, p) && !samePos(this.touchPreview, p)) {
-        // First tap on a target shows the damage forecast; a second tap attacks.
+      const intent = intentAt(this.selection, p, ev.shiftKey);
+      if (this.lastPointer === 'touch' && intent && intent.kind !== 'move' && intent.kind !== 'stand' && !samePos(this.touchPreview, p)) {
+        // First tap on a target shows what it does; a second tap does it.
         this.touchPreview = p;
         this.updateTooltip();
         return;
       }
       this.touchPreview = null;
-      const res = clickTile(this.state, this.selection, p);
-      if (res.action) this.playerAction(res.action);
-      else this.setSelection(res.selection);
-    });
-    window.addEventListener('keydown', (ev) => {
-      if (!this.started || document.getElementById('overlay')?.style.display === 'flex') return;
-      const k = ev.key;
-      if (k === 'Tab') {
-        ev.preventDefault();
-        this.cycle(ev.shiftKey ? -1 : 1);
-      } else if (k === 'Escape') {
-        this.setSelection(NO_SELECTION);
-        this.hideDialogue();
-      } else if (k === 'e' || k === 'E') {
-        this.endTurn();
-      } else if (k === 'w' || k === 'W') {
-        this.command('wait');
-      } else if ((k === 's' || k === 'S') && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
-        this.cycleSpeed();
+      this.setNotice(null);
+      const res = clickTile(this.state, this.selection, p, { preferAttack: ev.shiftKey });
+      if (res.action) this.playerAction(res.action, res.followUp ?? null);
+      else {
+        this.setSelection(res.selection);
+        if (res.notice) this.setNotice(res.notice);
       }
     });
+    window.addEventListener('keydown', (ev) => this.onKey(ev));
+  }
+
+  private onKey(ev: KeyboardEvent): void {
+    if (!this.started || document.getElementById('overlay')?.style.display === 'flex') return;
+    const k = ev.key;
+    const plain = !ev.ctrlKey && !ev.metaKey && !ev.altKey;
+    if (this.help.isOpen) {
+      // The dialog handles Tab and Esc itself; only the help key toggles it from the keyboard.
+      if (plain && !ev.repeat && (k === 'h' || k === 'H' || k === '?')) {
+        ev.preventDefault();
+        this.help.close();
+      }
+      return;
+    }
+    if (k === 'Tab') {
+      ev.preventDefault();
+      this.cycle(ev.shiftKey ? -1 : 1);
+    } else if (k === 'Escape') {
+      this.setSelection(NO_SELECTION);
+      this.hideDialogue();
+    } else if (k === 'e' || k === 'E') {
+      // A held key repeats: it must not count as the second press of the end-turn safeguard.
+      if (!ev.repeat) this.endTurn();
+    } else if (k === 'w' || k === 'W') {
+      this.command('wait');
+    } else if (plain && (k === 's' || k === 'S')) {
+      this.cycleSpeed();
+    } else if (!ev.repeat && ((plain && (k === 'u' || k === 'U')) || ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && (k === 'z' || k === 'Z')))) {
+      ev.preventDefault();
+      this.undoMove();
+    } else if (plain && !ev.repeat && (k === 't' || k === 'T')) {
+      this.toggleThreat();
+    } else if (plain && !ev.repeat && (k === 'h' || k === 'H' || k === '?')) {
+      ev.preventDefault();
+      this.help.open();
+    }
   }
 
   private updateTooltip(): void {
     const sel = this.selection;
     const p = this.hover;
     if (!p || sel.mode !== 'unit' || this.locked) return this.hideTooltip();
-    const target = targetAt(sel, p);
-    if (!target) return this.hideTooltip();
-    const f = attackForecast(this.state, sel.unitId, target.id);
-    if (!f) return this.hideTooltip();
-    const name = makeNameLookup(this.state)(target.id);
-    this.tooltip.innerHTML =
-      `<div><b>${escapeHtml(name)}</b> <span class="muted">HP ${f.targetHp}</span></div>` +
-      `<div class="dmg">${escapeHtml(forecastText(f))}</div>` +
-      `<div class="muted">${this.lastPointer === 'touch' ? 'Tap again to attack' : 'Click to attack'}</div>`;
+    const model = tooltipFor(this.state, sel, intentAt(sel, p), this.lastPointer === 'touch');
+    if (!model) return this.hideTooltip();
+    this.tooltip.className = model.cls;
+    this.tooltip.innerHTML = tooltipHtml(model);
     this.tooltip.style.display = 'block';
     const anchor = this.renderer.tileCenterCss(p);
     const bw = this.boardInner.clientWidth;
@@ -530,6 +739,16 @@ export class GameController {
       get selection(): Selection {
         return self.selection;
       },
+      /** Moves that Undo can take back. */
+      get undoDepth(): number {
+        return self.undo.length;
+      },
+      get threatOn(): boolean {
+        return self.threatOn;
+      },
+      get helpOpen(): boolean {
+        return self.help.isOpen;
+      },
       /** Page (client) coordinates of a tile's centre. */
       tileToClient(x: number, y: number): { x: number; y: number } {
         const rect = self.opts.canvas.getBoundingClientRect();
@@ -542,6 +761,13 @@ export class GameController {
 
 function samePos(a: Pos | null, b: Pos | null): boolean {
   return a === b || (a !== null && b !== null && a.x === b.x && a.y === b.y);
+}
+
+/** Tooltip markup: the attack forecast keeps its original look; interactions get a description and an amber call to action. */
+function tooltipHtml(m: TooltipModel): string {
+  const head = `<div><b>${escapeHtml(m.title)}</b>${m.sub ? ` <span class="muted">${escapeHtml(m.sub)}</span>` : ''}</div>`;
+  const lines = m.lines.map((l) => `<div class="${l.kind === 'muted' ? 'muted' : l.kind}">${escapeHtml(l.text)}</div>`).join('');
+  return head + lines;
 }
 
 function injectStyles(): void {

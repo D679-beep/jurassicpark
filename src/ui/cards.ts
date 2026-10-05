@@ -53,8 +53,9 @@ export function showIntro(o: IntroOptions): void {
     `<div class="facts"><div><h3>The bells</h3><div class="bell-line">${bells}</div>` +
     `<div class="hint">Each bell brings loyalist reinforcements.</div></div>` +
     `<div><h3>Defeat</h3><div class="hint">If Varek or Kaela falls, or Dawn arrives with the Emperor alive.</div></div></div>` +
-    `<div class="actions"><span class="hint">Click a unit to select it, click a blue tile to move, a red one to attack. ` +
-    `Tab cycles units, E ends the turn.</span><button class="primary" id="begin-btn">Begin</button></div>` +
+    `<div class="actions"><span class="hint">Click a unit to select it, click a blue tile to move, a red one to attack, an amber one to interact. ` +
+    `To Confront the Emperor, select Varek and click him. Tab cycles units, E ends the turn, U undoes a move, H opens the full guide.</span>` +
+    `<button class="primary" id="begin-btn">Begin</button></div>` +
     `</div>`;
   const btn = el.querySelector<HTMLButtonElement>('#begin-btn');
   btn?.addEventListener('click', () => {

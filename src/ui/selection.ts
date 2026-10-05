@@ -11,7 +11,21 @@ import {
   type InteractionKind,
   type Pos,
 } from '../engine';
-import { DOMAIN_NAMES, INTERACTION_NAMES, makeNameLookup } from './names';
+import { explainUnitClick } from './explain';
+import {
+  approachOptions,
+  interactionLabel,
+  interactionName,
+  interactionTargets,
+  type ApproachOption,
+  type FollowUp,
+  type InteractTarget,
+} from './interactions';
+import { DOMAIN_NAMES, makeNameLookup } from './names';
+import { isPlayerTurn } from './phase';
+
+export { isPlayerTurn };
+export type { ApproachOption, FollowUp, InteractTarget };
 
 export interface TargetOption {
   id: string;
@@ -35,16 +49,16 @@ export type Selection =
       mode: 'unit';
       unitId: string;
       moves: Pos[];
+      /** Attack targets (red). */
       targets: TargetOption[];
       commands: CommandOption[];
+      /** Interactions whose target is on the map: Confront, Capture, Burn Bridge (amber). */
+      interactions: InteractTarget[];
+      /** Interactions reachable after a move: "Confront from here". */
+      approaches: ApproachOption[];
     };
 
 export const NO_SELECTION: Selection = { mode: 'none' };
-
-/** True when it is the player's phase and the battle is still on. */
-export function isPlayerTurn(state: GameState): boolean {
-  return !state.gameOver && state.phase === 'player' && state.activeFaction === state.playerFaction;
-}
 
 function unitActions(state: GameState, unitId: string): Action[] {
   return getLegalActions(state, unitId).filter((a) => a.kind !== 'endTurn');
@@ -71,7 +85,8 @@ export function selectUnit(state: GameState, unitId: string): Selection {
   const targets: TargetOption[] = [];
   const commands: CommandOption[] = [];
   const u = findUnit(state, unitId)!;
-  for (const a of unitActions(state, unitId)) {
+  const actions = unitActions(state, unitId);
+  for (const a of actions) {
     switch (a.kind) {
       case 'move':
         moves.push(a.to);
@@ -91,29 +106,44 @@ export function selectUnit(state: GameState, unitId: string): Selection {
           action: a,
         });
         break;
-      case 'interact': {
-        const base = INTERACTION_NAMES[a.interaction];
-        const label = a.interaction === 'escape' ? base : `${base} ${name(a.targetId)}`;
+      case 'interact':
         commands.push({
           key: `interact:${a.interaction}:${a.targetId}`,
-          label,
+          label: interactionLabel(a.interaction, name(a.targetId)),
           kind: 'interact',
           interaction: a.interaction,
           action: a,
         });
         break;
-      }
       case 'wait':
         commands.push({ key: 'wait', label: 'Wait', kind: 'wait', action: a });
         break;
     }
   }
-  return { mode: 'unit', unitId, moves, targets, commands };
+  const interactions = interactionTargets(state, u, actions);
+  const approaches = approachOptions(state, u, moves, interactions);
+  return { mode: 'unit', unitId, moves, targets, commands, interactions, approaches };
 }
 
 /** Re-derives the selection after the state changed (keeps the same unit if still ready). */
 export function refreshSelection(state: GameState, sel: Selection): Selection {
   return sel.mode === 'unit' ? selectUnit(state, sel.unitId) : NO_SELECTION;
+}
+
+/**
+ * After the selected unit has nothing left to do: the next ready unit after it
+ * in state order (wrapping), or NO_SELECTION when nobody is ready.
+ */
+export function selectNextReadyAfter(state: GameState, unitId: string): Selection {
+  const ready = new Set(readyUnitIds(state));
+  if (ready.size === 0) return NO_SELECTION;
+  const order = state.units.map((u) => u.id);
+  const at = order.indexOf(unitId);
+  for (let i = 1; i <= order.length; i++) {
+    const id = order[(Math.max(0, at) + i) % order.length]!;
+    if (ready.has(id)) return selectUnit(state, id);
+  }
+  return NO_SELECTION;
 }
 
 export function targetAt(sel: Selection, p: Pos): TargetOption | undefined {
@@ -124,30 +154,133 @@ export function isMoveTile(sel: Selection, p: Pos): boolean {
   return sel.mode === 'unit' && sel.moves.some((m) => posEq(m, p));
 }
 
+/** What a click on a tile would do for the current selection. */
+export type TileIntent =
+  | { kind: 'attack'; target: TargetOption; alsoInteract?: InteractTarget }
+  | { kind: 'interact'; target: InteractTarget; alsoAttack?: TargetOption }
+  /** Walk to the best tile beside the target, then interact. */
+  | { kind: 'approach'; option: ApproachOption }
+  /** A move tile from which an interaction becomes possible. */
+  | { kind: 'stand'; options: ApproachOption[] }
+  | { kind: 'move' };
+
+/**
+ * Priority: attack or interaction with a unit on the tile (the interaction wins
+ * when both exist, unless `preferAttack`), then walking up to an interaction
+ * target, then plain moves, then interactions with objects (a bridge tile is a
+ * move first: crossing bridges is the common case).
+ */
+export function intentAt(sel: Selection, p: Pos, preferAttack = false): TileIntent | null {
+  if (sel.mode !== 'unit') return null;
+  const attack = sel.targets.find((t) => posEq(t.pos, p));
+  const interact = sel.interactions.find((t) => t.tiles.some((q) => posEq(q, p)));
+  const unitInteract = interact && interact.kind === 'unit' ? interact : undefined;
+  if (attack && unitInteract) {
+    return preferAttack
+      ? { kind: 'attack', target: attack, alsoInteract: unitInteract }
+      : { kind: 'interact', target: unitInteract, alsoAttack: attack };
+  }
+  if (attack) return { kind: 'attack', target: attack };
+  if (unitInteract) return { kind: 'interact', target: unitInteract };
+  const approach = sel.approaches.find((a) => posEq(a.pos, p));
+  if (approach) return { kind: 'approach', option: approach };
+  if (isMoveTile(sel, p)) {
+    const options = sel.approaches.filter((a) => a.stand.some((s) => posEq(s, p)));
+    return options.length > 0 ? { kind: 'stand', options } : { kind: 'move' };
+  }
+  if (interact) return { kind: 'interact', target: interact };
+  return null;
+}
+
 export interface ClickResult {
   selection: Selection;
   /** Action to apply, if the click issued one. */
   action: Action | null;
+  /** Perform this once the action (a move) has finished. */
+  followUp?: FollowUp;
+  /** A short explanation for the player when the click did nothing useful. */
+  notice?: string;
+}
+
+export interface ClickOptions {
+  /** Shift-click: attack instead of interacting when a tile offers both (Kaela beside a weakened Mira). */
+  preferAttack?: boolean;
+}
+
+/**
+ * The ready player unit that can interact with the unit `targetId` right now
+ * (direct first, else after a move), for a click on that unit with nothing selected.
+ */
+export function actorForTarget(state: GameState, targetId: string): { unitId: string; target: InteractTarget | ApproachOption } | null {
+  let via: { unitId: string; target: ApproachOption } | null = null;
+  for (const id of readyUnitIds(state)) {
+    const sel = selectUnit(state, id);
+    if (sel.mode !== 'unit') continue;
+    const direct = sel.interactions.find((t) => t.kind === 'unit' && t.id === targetId);
+    if (direct) return { unitId: id, target: direct };
+    const approach = sel.approaches.find((a) => a.id === targetId);
+    if (approach && !via) via = { unitId: id, target: approach };
+  }
+  return via;
 }
 
 /**
  * Handles a click on a map tile:
- *   - with a unit selected: attack target > move tile > select another ready
- *     unit > clicking the selected unit or anywhere else deselects;
- *   - with nothing selected: select a ready player unit on the tile.
+ *   - with a unit selected: attack / interaction target > walk-up to an
+ *     interaction target > move tile > select another ready unit > clicking the
+ *     selected unit or anywhere else deselects;
+ *   - with nothing selected: select a ready player unit on the tile; clicking a
+ *     unit that some ready unit can interact with (the Emperor) selects that unit;
+ *   - a click that does nothing carries a `notice` saying why.
  * Outside the player's turn nothing happens.
  */
-export function clickTile(state: GameState, sel: Selection, p: Pos): ClickResult {
+export function clickTile(state: GameState, sel: Selection, p: Pos, opts: ClickOptions = {}): ClickResult {
   if (!isPlayerTurn(state)) return { selection: NO_SELECTION, action: null };
   const occupant = state.units.find((u) => posEq(u.pos, p));
   if (sel.mode === 'unit') {
-    const target = targetAt(sel, p);
-    if (target) return { selection: sel, action: target.action };
-    if (isMoveTile(sel, p)) return { selection: sel, action: { kind: 'move', unitId: sel.unitId, to: { ...p } } };
+    const intent = intentAt(sel, p, opts.preferAttack === true);
+    if (intent) {
+      switch (intent.kind) {
+        case 'attack':
+          return { selection: sel, action: intent.target.action };
+        case 'interact':
+          return { selection: sel, action: intent.target.action };
+        case 'approach':
+          return {
+            selection: sel,
+            action: { kind: 'move', unitId: sel.unitId, to: { ...intent.option.best } },
+            followUp: { unitId: sel.unitId, interaction: intent.option.interaction, targetId: intent.option.id },
+          };
+        case 'stand':
+        case 'move':
+          return { selection: sel, action: { kind: 'move', unitId: sel.unitId, to: { ...p } } };
+      }
+    }
     if (occupant && occupant.id === sel.unitId) return { selection: NO_SELECTION, action: null };
   }
   if (occupant && isReady(state, occupant.id)) return { selection: selectUnit(state, occupant.id), action: null };
-  return { selection: NO_SELECTION, action: null };
+  if (!occupant) return { selection: NO_SELECTION, action: null };
+
+  // A unit we cannot select or hit.
+  const selectedId = sel.mode === 'unit' ? sel.unitId : null;
+  if (occupant.faction !== state.playerFaction) {
+    const actor = actorForTarget(state, occupant.id);
+    if (actor && actor.unitId !== selectedId) {
+      const next = selectUnit(state, actor.unitId);
+      const who = findUnit(state, actor.unitId)!.name;
+      const verb = interactionName(actor.target.interaction);
+      const notice =
+        'stand' in actor.target
+          ? `${who} is selected and can walk up to ${occupant.name}. Click ${occupant.name} again to ${verb}.`
+          : `${who} is selected. Click ${occupant.name} again to ${verb}.`;
+      return { selection: next, action: null, notice };
+    }
+    const why = explainUnitClick(state, selectedId, occupant);
+    // Keep the selected unit: a failed attack attempt should not throw the selection away.
+    return { selection: sel.mode === 'unit' ? sel : NO_SELECTION, action: null, ...(why ? { notice: why } : {}) };
+  }
+  const why = explainUnitClick(state, selectedId, occupant);
+  return { selection: NO_SELECTION, action: null, ...(why ? { notice: why } : {}) };
 }
 
 /** Tab: the next ready unit after the selected one (wrapping), or the first. */

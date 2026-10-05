@@ -8,6 +8,8 @@
 //   --info-h  tile-info strip height
 //   --board-w board width (the strip matches it)
 // The fallbacks are the 1280x720 values.
+import { OVERLAY } from './palette';
+
 export const STYLES = `
 :root {
   --bg: #0b0a10;
@@ -30,6 +32,33 @@ export const STYLES = `
   --gutter: 8px;
   --col-gap: 10px;
   --strip-gap: 4px;
+  /* Usability layer (undo / threat / help, guidance, notices, help dialog). */
+  --hit: 44px;
+  --radius: 5px;
+  --radius-lg: 10px;
+  --sp-1: 0.25rem;
+  --sp-2: 0.4rem;
+  --sp-3: 0.65rem;
+  --sp-4: 1rem;
+  --sp-5: 1.6rem;
+  --fs-xs: 0.78rem;
+  --fs-sm: 0.88rem;
+  --fs-md: 0.95rem;
+  --warn: #f0c060;
+  --line-strong: #3a3550;
+  --scrim: rgba(4, 4, 8, 0.8);
+  --ready-bg: #14261a;
+  --interact: ${OVERLAY.interactEdge};
+  --interact-bg: #2b2108;
+  --threat: ${OVERLAY.threatEdge};
+  --mark: ${OVERLAY.mark};
+  --ov-reach: ${OVERLAY.reach};
+  --ov-reach-edge: ${OVERLAY.reachEdge};
+  --ov-attack: ${OVERLAY.target};
+  --ov-attack-edge: ${OVERLAY.targetEdge};
+  --ov-interact: ${OVERLAY.interact};
+  --ov-threat: ${OVERLAY.threat[1]};
+  --ov-threat-hatch: ${OVERLAY.threatHatch};
   color-scheme: dark;
   font-size: var(--fs, 13px);
 }
@@ -131,7 +160,7 @@ button.speed:hover:not(:disabled) { background: #2a2314; border-color: var(--gol
 button {
   font: 600 0.98rem/1.1 system-ui, sans-serif; color: var(--text);
   background: var(--panel-2); border: 1px solid #3a3550; border-radius: 5px;
-  padding: 0.45rem 0.7rem; cursor: pointer; min-height: 2.45rem;
+  padding: 0.45rem 0.7rem; cursor: pointer; min-height: max(2.45rem, var(--hit));
 }
 button kbd {
   font: 600 0.78rem/1 system-ui, sans-serif; color: var(--muted);
@@ -210,10 +239,13 @@ button.interact { background: #3a1d22; border-color: #8a4652; color: #ffd8dc; }
 #tooltip {
   position: absolute; pointer-events: none; z-index: 5; display: none;
   background: rgba(10,9,14,0.95); border: 1px solid var(--gold-dim); border-radius: 5px;
-  padding: 0.45rem 0.65rem; font: 0.95rem/1.35 system-ui, sans-serif; color: var(--text); white-space: nowrap;
+  padding: 0.45rem 0.65rem; font: 0.95rem/1.35 system-ui, sans-serif; color: var(--text); white-space: nowrap; max-width: 22rem;
   box-shadow: 0 4px 14px rgba(0,0,0,0.5);
 }
 #tooltip .dmg { color: #ffb4a6; font-weight: 700; font-size: 1.08rem; }
+#tooltip .desc { white-space: normal; }
+#tooltip .act { color: var(--interact); font-weight: 700; }
+#tooltip.interact { border-color: var(--interact); }
 #dialogue {
   position: absolute; left: 50%; bottom: 0.9rem; transform: translateX(-50%);
   width: min(88%, 46rem); z-index: 4; display: none; line-height: 1.4;
@@ -277,4 +309,95 @@ button.interact { background: #3a1d22; border-color: #8a4652; color: #ffd8dc; }
 .card.defeat h1, .card.defeat .kicker .ic { color: #f39a8a; }
 .card.victory h1 { text-shadow: 0 0 18px rgba(127,209,138,0.25); }
 .card.defeat h1 { text-shadow: 0 0 18px rgba(239,122,106,0.25); }
+
+/* --- usability layer: tool buttons, notices, objective guidance, map legend swatches --- */
+.tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); margin-top: var(--sp-2); }
+.tools button {
+  min-height: var(--hit); min-width: var(--hit); padding-inline: var(--sp-2);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-1);
+}
+.tools button .ic { font-size: 1.1em; }
+button[aria-pressed="true"] { background: var(--interact-bg); border-color: var(--threat); }
+button[aria-pressed="true"] .ic { color: var(--threat); }
+button.primary.armed { border-color: var(--interact); box-shadow: 0 0 0 2px var(--interact); }
+.notice {
+  margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--interact);
+  border-radius: var(--radius); background: var(--interact-bg); color: var(--text); font-size: var(--fs-md); line-height: 1.35;
+}
+.notice:empty { display: none; }
+.guide {
+  display: flex; align-items: flex-start; gap: var(--sp-2); margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line); border-left: 3px solid var(--gold-dim); border-radius: var(--radius);
+  background: var(--panel-2); font-size: var(--fs-md); line-height: 1.35;
+}
+.guide .guide-ic { flex: none; color: var(--gold); }
+.guide.tone-ok { border-left-color: var(--ok); }
+.guide.tone-ok .guide-ic { color: var(--ok); }
+.guide.tone-warn { border-left-color: var(--warn); }
+.guide.tone-warn .guide-ic { color: var(--warn); }
+.guide.tone-bad { border-left-color: var(--bad); }
+.guide.tone-bad .guide-ic { color: var(--bad); }
+.guide.ready { border-color: var(--ok); background: var(--ready-bg); }
+.why { margin-top: var(--sp-2); }
+.sw-move { background: var(--ov-reach); box-shadow: inset 0 0 0 1px var(--ov-reach-edge); }
+.sw-attack { background: var(--ov-attack); box-shadow: inset 0 0 0 1px var(--ov-attack-edge); }
+.sw-interact { background: var(--ov-interact); box-shadow: inset 0 0 0 1px var(--interact); }
+.sw-stand { background: var(--ov-reach); outline: 2px dashed var(--interact); outline-offset: -3px; }
+.sw-threat {
+  background: repeating-linear-gradient(135deg, var(--ov-threat-hatch) 0 2px, var(--ov-threat) 2px 6px);
+  box-shadow: inset 0 0 0 1px var(--threat);
+}
+.sw-crown { background: var(--mark); clip-path: polygon(0 100%, 0 34%, 25% 62%, 50% 0, 75% 62%, 100% 34%, 100% 100%); }
+
+/* --- help dialog --- */
+dialog.help {
+  padding: 0; width: min(56rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); color: var(--text);
+  background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--gold-dim); border-radius: var(--radius-lg);
+  box-shadow: 0 10px 50px rgba(0,0,0,0.7);
+}
+dialog.help::backdrop { background: var(--scrim); }
+dialog.help form { display: flex; flex-direction: column; max-height: calc(100vh - 2rem); margin: 0; }
+.help-head, .help-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+.help-head { border-bottom: 1px solid var(--line); }
+.help-foot { border-top: 1px solid var(--line); justify-content: flex-end; }
+.help h1 { margin: 0; font: 700 1.5rem/1.2 Georgia, 'Times New Roman', serif; color: var(--gold); }
+.help h2 { margin: 0 0 var(--sp-2); font: 600 var(--fs-xs)/1.2 system-ui, sans-serif; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold-dim); }
+.help h3 { margin: var(--sp-3) 0 var(--sp-1); font: 600 var(--fs-sm)/1.2 system-ui, sans-serif; color: var(--text); }
+.help-close { width: var(--hit); height: var(--hit); padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+.help-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: var(--sp-4) var(--sp-5); align-items: start;
+  scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
+}
+.help-body section { min-width: 0; }
+.help ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
+.help li { line-height: 1.4; }
+.help .hint { color: var(--muted); font-size: var(--fs-md); }
+.help-objectives li { display: grid; grid-template-columns: 1.6rem 1fr; gap: var(--sp-2); align-items: start; }
+.help-objectives .oi { font-size: 1.2rem; }
+.help-objectives .otype { font-size: var(--fs-xs); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-left: var(--sp-1); }
+.help-objectives .otype.required { color: var(--gold); }
+.help-tip { margin: var(--sp-3) 0 0; padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--interact); border-radius: var(--radius); background: var(--interact-bg); line-height: 1.4; }
+.help-list li { display: flex; align-items: center; gap: var(--sp-2); }
+.help-list .ic { color: var(--gold); flex: none; }
+.help-list li.rung { color: var(--muted); }
+.help-rules li { padding-left: var(--sp-3); border-left: 2px solid var(--line-strong); }
+.controls { display: flex; flex-direction: column; gap: 0; margin: 0 0 var(--sp-3); }
+.controls > div { display: grid; grid-template-columns: 8.5rem 1fr; gap: var(--sp-2); padding: var(--sp-1) 0; border-bottom: 1px solid var(--line); }
+.controls dt, .controls dd { margin: 0; }
+.controls dd { color: var(--text); line-height: 1.4; }
+.help kbd {
+  font: 600 var(--fs-xs)/1 system-ui, sans-serif; color: var(--text); border: 1px solid var(--line-strong);
+  border-radius: 3px; padding: 0.1rem 0.3rem; margin-left: 0;
+}
+.help button.primary kbd { margin-left: var(--sp-2); }
+.help-legend li { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.help-legend .sw { width: 1.3rem; height: 1.3rem; flex: none; border-radius: 2px; margin-top: 0.1rem; }
+.pref { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--hit); cursor: pointer; }
+.pref input[type="checkbox"] { flex: none; width: 1.4rem; height: 1.4rem; accent-color: var(--gold); order: 2; }
+.pref select {
+  flex: none; min-height: var(--hit); padding: 0 var(--sp-3); font: inherit; color: var(--text);
+  background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: var(--radius);
+}
+input:focus-visible, select:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 `;

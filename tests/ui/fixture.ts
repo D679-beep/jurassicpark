@@ -48,6 +48,28 @@ export function uiGame(): GameState {
   return createGame(uiScenario());
 }
 
+/** The UI scenario after `edit` has changed its definition (move a unit, add one, swap a legend char). */
+export function uiGameWith(edit: (def: ScenarioDef) => void): GameState {
+  const def = uiScenario();
+  edit(def);
+  return createGame(def);
+}
+
+/** Moves a unit of a scenario definition. */
+export function placeUnit(def: ScenarioDef, id: string, pos: [number, number]): void {
+  const u = def.units.find((x) => x.id === id);
+  if (!u) throw new Error(`no unit ${id}`);
+  u.pos = pos;
+}
+
+/** Adds Kaela (rebel, kindled) at `kaela` and a weakened Mira (loyalist radiant, 5/18 HP) at `mira`. */
+export function addKaelaAndMira(def: ScenarioDef, kaela: [number, number], mira: [number, number]): void {
+  def.units.push(
+    { id: 'kaela', name: 'Kaela', faction: 'rebel', rank: 'kindled', character: 'kaela', pos: kaela },
+    { id: 'mira', name: 'Princess Mira', faction: 'loyalist', rank: 'radiant', character: 'mira', pos: mira, stats: { hp: 5, maxHp: 18 } },
+  );
+}
+
 export function play(state: GameState, ...actions: Action[]): { state: GameState; events: GameEvent[] } {
   let s = state;
   const events: GameEvent[] = [];

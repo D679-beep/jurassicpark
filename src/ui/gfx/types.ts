@@ -55,6 +55,7 @@ import type { ActiveDomain, GameState, Pos, Terrain, Unit } from '../../engine';
 import type { AnimStep, DisplayOverrides } from '../animation';
 import type { BellEra } from '../hudModel';
 import type { Selection } from '../selection';
+import type { ThreatOverlay } from '../threatView';
 import type { Effect } from './fx';
 
 // --- basics -------------------------------------------------------------------
@@ -76,6 +77,20 @@ export interface Motion {
 
 // --- renderer input (controller -> renderer) ----------------------------------
 
+/**
+ * A marker the overlays pass draws above the units: the crown on the Emperor's
+ * tile. `ready` = the player can Confront right now (glows, with a label),
+ * `reachable` = Varek can get there this turn, `idle` = just a pointer to
+ * where to go.
+ */
+export interface BoardMark {
+  kind: 'crown';
+  pos: Pos;
+  state: 'idle' | 'reachable' | 'ready';
+  /** Short plaque text shown when `ready`. */
+  label: string;
+}
+
 /** Everything the controller hands the renderer each frame. Written by controller.ts only. */
 export interface RenderInput {
   state: GameState;
@@ -85,6 +100,10 @@ export interface RenderInput {
   showHighlights: boolean;
   hover: Pos | null;
   hoverPath: Pos[] | null;
+  /** Enemy reach tint (T key, or a hovered enemy); absent or null = none. Drawn only while `showHighlights`. */
+  threat?: ThreatOverlay | null;
+  /** Objective markers (the crown on the Emperor). */
+  marks?: readonly BoardMark[];
   /** Controller-spawned effects (floats, flashes, pulses, banners). Type owned by fx.ts (WS4). */
   effects: readonly Effect[];
   /** performance.now() of this frame. */

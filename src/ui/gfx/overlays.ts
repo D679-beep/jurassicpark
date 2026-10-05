@@ -11,8 +11,10 @@
 import { type DomainKind, type GameState, type Pos, type Terrain } from '../../engine';
 import { placeZoneLabel } from '../layout';
 import { DOMAIN_NAMES, zoneName } from '../names';
-import { DOMAIN, OVERLAY, hpColor } from '../palette';
-import type { GfxFrame, MapSites, OverlaysPass } from './types';
+import { DOMAIN, OVERLAY, hpColor, rgba } from '../palette';
+import type { Selection } from '../selection';
+import type { ThreatOverlay } from '../threatView';
+import type { BoardMark, GfxFrame, MapSites, OverlaysPass } from './types';
 
 /** Terrain a zone plaque should not cover (furniture and cover). */
 const LABEL_BLOCKING: ReadonlySet<Terrain> = new Set<Terrain>(['pillar', 'table', 'crates', 'brazier', 'bell']);
@@ -101,6 +103,12 @@ export function createOverlays(): OverlaysPass {
   let reachAt = new Uint32Array(0);
   let targetAt = new Uint32Array(0);
   let gen = 0;
+  // The enemy-reach region has its own grid and counter (it is drawn without a selection).
+  let threatAt = new Uint32Array(0);
+  let threatGen = 0;
+  // Enemy-reach hatching and mark plaques, keyed by tile size (see ensureSize).
+  let hatch: CanvasPattern | null = null;
+  const markPlaques = new Map<string, Plaque>();
 
   const ensureSize = (f: GfxFrame): void => {
     if (cacheT === f.T && cacheDpr === f.dpr) return;
@@ -108,6 +116,8 @@ export function createOverlays(): OverlaysPass {
     cacheDpr = f.dpr;
     zonePlaques.clear();
     domainPlaques.clear();
+    markPlaques.clear();
+    hatch = null;
     dashZone = [Math.max(2, Math.round(f.T / 6)), Math.max(2, Math.round(f.T / 9))];
     placeSig = -1;
   };
@@ -116,7 +126,70 @@ export function createOverlays(): OverlaysPass {
     if (reachAt.length >= n) return;
     reachAt = new Uint32Array(n);
     targetAt = new Uint32Array(n);
+    threatAt = new Uint32Array(n);
     blocked = new Uint8Array(n);
+  };
+
+  /** Diagonal hatching on a tile-sized pattern: the lines are spaced T/4 apart so they run on across tile borders. */
+  const hatchPattern = (f: GfxFrame): CanvasPattern | null => {
+    if (hatch) return hatch;
+    const c = document.createElement('canvas');
+    c.width = f.T;
+    c.height = f.T;
+    const g = c.getContext('2d');
+    if (!g) return null;
+    g.strokeStyle = OVERLAY.threatHatch;
+    g.lineWidth = Math.max(1, f.px(1));
+    g.beginPath();
+    for (let k = -4; k <= 8; k++) {
+      const x = (k * f.T) / 4;
+      g.moveTo(x, f.T);
+      g.lineTo(x + f.T, 0);
+    }
+    g.stroke();
+    hatch = f.ctx.createPattern(c, 'repeat');
+    return hatch;
+  };
+
+  const markPlaque = (f: GfxFrame, label: string): Plaque => {
+    let p = markPlaques.get(label);
+    if (!p) {
+      const fs = labelFont(f.T, f.dpr, 0.3);
+      p = makePlaque(label.toUpperCase(), `700 ${fs}px ${SERIF}`, fs, OVERLAY.mark, OVERLAY.interactEdge, f.dpr);
+      markPlaques.set(label, p);
+    }
+    return p;
+  };
+
+  /** Tint, hatching and an outline over the tiles the enemy can attack next turn. */
+  const drawThreat = (f: GfxFrame, th: ThreatOverlay): void => {
+    const { ctx, T } = f;
+    const w = f.mapW;
+    threatGen = (threatGen + 1) >>> 0 || 1;
+    const g = threatGen;
+    const inRange = (p: Pos): boolean => p.x >= 0 && p.y >= 0 && p.x < w && p.y < f.mapH;
+    th.tiles.forEach((p) => {
+      if (inRange(p)) threatAt[p.y * w + p.x] = g;
+    });
+    const inside = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < w && y < f.mapH && threatAt[y * w + x] === g;
+    for (let level = 1; level <= OVERLAY.threat.length; level++) {
+      ctx.fillStyle = OVERLAY.threat[level - 1]!;
+      ctx.beginPath();
+      th.tiles.forEach((p, i) => {
+        // The last step takes every tile with that many enemies or more.
+        const l = Math.min(OVERLAY.threat.length, Math.max(1, th.counts[i] ?? 1));
+        if (l === level) ctx.rect(p.x * T, p.y * T, T, T);
+      });
+      ctx.fill();
+    }
+    const pattern = hatchPattern(f);
+    if (pattern) {
+      ctx.fillStyle = pattern;
+      ctx.beginPath();
+      for (const p of th.tiles) ctx.rect(p.x * T, p.y * T, T, T);
+      ctx.fill();
+    }
+    regionEdges(f, th.tiles, (p) => p, inside, OVERLAY.threatEdge);
   };
 
   const zonePlaque = (f: GfxFrame, id: string): Plaque => {
@@ -160,10 +233,12 @@ export function createOverlays(): OverlaysPass {
       ensureSize(f);
       drawZoneOutline(f, dashZone);
       const { input } = f;
-      const sel = input.selection;
-      if (!input.showHighlights || sel.mode !== 'unit') return;
+      if (!input.showHighlights) return;
       const w = f.mapW;
       ensureGrids(w * f.mapH);
+      if (input.threat && input.threat.tiles.length > 0) drawThreat(f, input.threat);
+      const sel = input.selection;
+      if (sel.mode !== 'unit') return;
       gen = (gen + 1) >>> 0 || 1;
       for (const m of sel.moves) if (m.x >= 0 && m.y >= 0 && m.x < w && m.y < f.mapH) reachAt[m.y * w + m.x] = gen;
       for (const t of sel.targets) if (t.pos.x >= 0 && t.pos.y >= 0 && t.pos.x < w && t.pos.y < f.mapH) targetAt[t.pos.y * w + t.pos.x] = gen;
@@ -179,6 +254,7 @@ export function createOverlays(): OverlaysPass {
         regionEdges(f, targets, (t) => t.pos, inTarget, OVERLAY.targetEdge);
         for (const t of targets) reticle(f, t.pos);
       }
+      drawInteractions(f, sel, inReach);
       if (input.hoverPath && input.hoverPath.length > 0) {
         const u = f.state.units.find((x) => x.id === sel.unitId);
         drawPath(f, u ? f.displayPos(u) : null, input.hoverPath);
@@ -225,6 +301,7 @@ export function createOverlays(): OverlaysPass {
         }
       }
       drawObjectHp(f);
+      for (const m of f.input.marks ?? []) drawMark(f, m, (label) => markPlaque(f, label));
     },
 
     drawHover(f: GfxFrame) {
@@ -356,6 +433,160 @@ function reticle(f: GfxFrame, p: Pos): void {
   ctx.strokeStyle = OVERLAY.targetEdge;
   ctx.lineWidth = lw;
   ctx.stroke();
+}
+
+/** Interaction mark: a diamond inscribed in the tile (the attack reticle is square corner brackets), cased; dashed for a walk-up target. */
+function diamondMark(f: GfxFrame, p: Pos, dashed: boolean): void {
+  const { ctx, T } = f;
+  const i = Math.max(2, Math.round(T * 0.1));
+  const x0 = p.x * T + i;
+  const y0 = p.y * T + i;
+  const x1 = (p.x + 1) * T - i;
+  const y1 = (p.y + 1) * T - i;
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  const lw = Math.max(f.px(1.5), Math.round(T / 16));
+  ctx.beginPath();
+  ctx.moveTo(cx, y0);
+  ctx.lineTo(x1, cy);
+  ctx.lineTo(cx, y1);
+  ctx.lineTo(x0, cy);
+  ctx.closePath();
+  ctx.lineJoin = 'miter';
+  if (dashed) ctx.setLineDash([Math.max(3, Math.round(T / 6)), Math.max(2, Math.round(T / 10))]);
+  ctx.strokeStyle = OVERLAY.edgeOuter;
+  ctx.lineWidth = lw + 2 * f.px(1);
+  ctx.stroke();
+  ctx.strokeStyle = OVERLAY.interactEdge;
+  ctx.lineWidth = lw;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/** "Interact from here": a dashed amber frame inset in a blue move tile and a small diamond in its corner. */
+function standMark(f: GfxFrame, p: Pos): void {
+  const { ctx, T } = f;
+  const inset = Math.max(2, Math.round(T * 0.08));
+  const lw = Math.max(f.px(1.5), Math.round(T / 20));
+  const x0 = p.x * T + inset;
+  const y0 = p.y * T + inset;
+  const side = T - 2 * inset;
+  ctx.setLineDash([Math.max(3, Math.round(T / 5)), Math.max(2, Math.round(T / 8))]);
+  ctx.strokeStyle = OVERLAY.edgeOuter;
+  ctx.lineWidth = lw + 2 * f.px(1);
+  ctx.strokeRect(x0, y0, side, side);
+  ctx.strokeStyle = OVERLAY.stand;
+  ctx.lineWidth = lw;
+  ctx.strokeRect(x0, y0, side, side);
+  ctx.setLineDash([]);
+  // Corner diamond, so the mark does not rely on colour or on the dashes alone.
+  const r = Math.max(3, Math.round(T * 0.13));
+  const cx = x0 + r + lw;
+  const cy = y0 + r + lw;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - r);
+  ctx.lineTo(cx + r, cy);
+  ctx.lineTo(cx, cy + r);
+  ctx.lineTo(cx - r, cy);
+  ctx.closePath();
+  ctx.fillStyle = OVERLAY.stand;
+  ctx.fill();
+  ctx.strokeStyle = OVERLAY.edgeOuter;
+  ctx.lineWidth = Math.max(1, f.px(1));
+  ctx.stroke();
+}
+
+/**
+ * Amber highlights for the selected unit's interactions: the target tiles
+ * (click to interact), the walk-up target and the tiles to stand on. A bridge
+ * tile the unit can walk onto stays a plain move tile (crossing wins).
+ */
+function drawInteractions(f: GfxFrame, sel: Selection, inReach: (x: number, y: number) => boolean): void {
+  if (sel.mode !== 'unit' || (sel.interactions.length === 0 && sel.approaches.length === 0)) return;
+  const { ctx, T } = f;
+  const w = f.mapW;
+  const targets: Pos[] = [];
+  for (const t of sel.interactions) for (const p of t.tiles) if (t.kind === 'unit' || !inReach(p.x, p.y)) targets.push(p);
+  if (targets.length > 0) {
+    const key = new Set(targets.map((p) => p.y * w + p.x));
+    ctx.fillStyle = OVERLAY.interact;
+    for (const p of targets) ctx.fillRect(p.x * T, p.y * T, T, T);
+    regionEdges(f, targets, (p) => p, (x, y) => key.has(y * w + x), OVERLAY.interactEdge);
+    for (const p of targets) diamondMark(f, p, false);
+  }
+  for (const a of sel.approaches) {
+    ctx.fillStyle = OVERLAY.approach;
+    ctx.fillRect(a.pos.x * T, a.pos.y * T, T, T);
+    diamondMark(f, a.pos, true);
+    for (const s of a.stand) standMark(f, s);
+  }
+}
+
+/**
+ * The crown over an objective's tile. Idle: a pointer to where to go.
+ * Reachable: also a steady ring. Ready: a bright, pulsing ring and a label
+ * (the pulse stops under reduced motion; the ring and label stay).
+ */
+function drawMark(f: GfxFrame, m: BoardMark, plaque: (label: string) => Plaque): void {
+  const { ctx, T } = f;
+  const x0 = m.pos.x * T;
+  const y0 = m.pos.y * T;
+  const cx = x0 + T / 2;
+  const ready = m.state === 'ready';
+  const pulse = f.motion.reduced ? 1 : 0.5 + 0.5 * Math.sin(f.now / 240);
+  const o = Math.max(1, f.px(1));
+  if (ready || m.state === 'reachable') {
+    const lw = Math.max(f.px(2), Math.round(T / 12));
+    const grow = ready && !f.motion.reduced ? pulse * T * 0.1 : 0;
+    const inset = lw / 2 + o - grow;
+    const side = T - 2 * inset;
+    ctx.lineJoin = 'miter';
+    ctx.strokeStyle = OVERLAY.edgeOuter;
+    ctx.lineWidth = lw + 2 * o;
+    ctx.strokeRect(x0 + inset, y0 + inset, side, side);
+    ctx.strokeStyle = rgba(OVERLAY.markRing, ready ? 0.6 + 0.4 * pulse : 0.6);
+    ctx.lineWidth = lw;
+    ctx.strokeRect(x0 + inset, y0 + inset, side, side);
+  }
+  // The crown: three points on a band, sitting on the tile's top edge.
+  const cw = Math.round(T * 0.54);
+  const ch = Math.round(T * 0.4);
+  const top = Math.max(0, y0 - ch - o);
+  const left = Math.round(cx - cw / 2);
+  ctx.beginPath();
+  const pts: ReadonlyArray<readonly [number, number]> = [
+    [0, 1],
+    [0, 0.34],
+    [0.25, 0.62],
+    [0.5, 0],
+    [0.75, 0.62],
+    [1, 0.34],
+    [1, 1],
+  ];
+  pts.forEach(([u, v], i) => {
+    const px = left + u * cw;
+    const py = top + v * ch;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  });
+  ctx.closePath();
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = OVERLAY.markCase;
+  ctx.lineWidth = Math.max(2, f.px(2)) + 2 * o;
+  ctx.stroke();
+  ctx.fillStyle = OVERLAY.mark;
+  ctx.fill();
+  ctx.strokeStyle = OVERLAY.markEdge;
+  ctx.lineWidth = Math.max(1, f.px(1));
+  ctx.stroke();
+  ctx.lineJoin = 'miter';
+  if (ready) {
+    const p = plaque(m.label);
+    const gap = Math.max(2, Math.round(T * 0.06));
+    let py = top - p.h - gap;
+    if (py < 0) py = y0 + T + gap;
+    ctx.drawImage(p.c, Math.round(cx - p.w / 2), py);
+  }
 }
 
 /** Hover path: cased polyline from the unit to the destination, with an end ring. */
