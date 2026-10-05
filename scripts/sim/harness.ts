@@ -141,6 +141,8 @@ export interface RunOptions {
   maxRounds?: number;
   /** Called after every phase (for tracing). */
   onPhase?: (s: GameState, events: GameEvent[]) => void;
+  /** Called after every Loyalist AI phase with its wall-clock time (runAiPhase, ms) and the state it started from. */
+  onAiPhaseTime?: (ms: number, before: GameState) => void;
 }
 
 export function runGame(strat: Strategy, seed: number, opts: RunOptions = {}): RunResult {
@@ -182,7 +184,14 @@ export function runGame(strat: Strategy, seed: number, opts: RunOptions = {}): R
   const mem: Memory = {};
   const maxRounds = opts.maxRounds ?? 30;
   while (!s.gameOver && s.round <= maxRounds) {
-    const r = s.activeFaction === s.playerFaction ? playRebelPhase(s, strat, mem) : runAiPhase(s);
+    let r: { state: GameState; events: GameEvent[] };
+    if (s.activeFaction === s.playerFaction) {
+      r = playRebelPhase(s, strat, mem);
+    } else {
+      const t0 = performance.now();
+      r = runAiPhase(s);
+      opts.onAiPhaseTime?.(performance.now() - t0, s);
+    }
     track(t, r.events, r.state);
     s = r.state;
     opts.onPhase?.(s, r.events);

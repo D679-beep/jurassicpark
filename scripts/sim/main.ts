@@ -6,6 +6,7 @@
 //   --watch a,b        unit ids shown in the trace (default: the named characters)
 //   --runs             print one line per run
 //   --json             print the summaries as JSON
+//   --timing           also time every Loyalist AI phase (runAiPhase) and print avg / p95 / worst
 //   --variant name     play a scenario variant (undo-orsa, v0.2, v0.1 = untuned, ...; see variants.ts)
 import type { GameEvent, GameState } from '../../src/engine';
 import { runGame, runMany, seedList, summarize, type RunResult, type Summary } from './harness';
@@ -113,10 +114,29 @@ export function main(argv: string[]): void {
   const t0 = Date.now();
   const summaries: Summary[] = [];
   const all: RunResult[] = [];
+  const timing = argv.includes('--timing');
+  const aiTimes: { ms: number; where: string }[] = [];
   for (const strat of strategies) {
-    const runs = runMany(strat, seeds, { scenario });
+    const runs = timing
+      ? seeds.map((seed) =>
+          runGame(strat, seed, {
+            scenario,
+            onAiPhaseTime: (ms, before) => aiTimes.push({ ms, where: `${strat.name} seed=${seed} r${before.round} (${before.units.filter((u) => u.faction === before.activeFaction).length} AI units)` }),
+          }),
+        )
+      : runMany(strat, seeds, { scenario });
     all.push(...runs);
     summaries.push(summarize(strat.name, runs));
+  }
+  if (timing && aiTimes.length > 0) {
+    // Wall-clock time of one whole Loyalist phase (runAiPhase: every chooseAiAction call plus applyAction).
+    const sorted = aiTimes.map((t) => t.ms).sort((a, b) => a - b);
+    const q = (p: number): number => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]!;
+    const worst = aiTimes.reduce((a, b) => (b.ms > a.ms ? b : a));
+    console.log(
+      `AI phase timing over ${sorted.length} phases: avg ${(sorted.reduce((a, b) => a + b, 0) / sorted.length).toFixed(1)} ms, ` +
+        `median ${q(0.5).toFixed(1)} ms, p95 ${q(0.95).toFixed(1)} ms, p99 ${q(0.99).toFixed(1)} ms, worst ${worst.ms.toFixed(1)} ms (${worst.where})\n`,
+    );
   }
   if (argv.includes('--json')) {
     console.log(JSON.stringify(summaries, null, 2));

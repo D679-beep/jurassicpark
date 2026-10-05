@@ -17,6 +17,7 @@ import {
   type Pos,
   type Unit,
 } from '../engine';
+import type { VipDefense } from './defense';
 import type { Role } from './roles';
 
 /** How much the attacker's side wants a target gone (before damage/kill terms). */
@@ -92,24 +93,48 @@ function within(a: Pos, b: Pos, r: number): boolean {
   return manhattan(a, b) <= r;
 }
 
+/** What the planner knows that a Domain decision needs (optional: tests may score without it). */
+export interface DomainContext {
+  /** The confronter's ETA to each allied VIP's Confront tiles. */
+  vips: VipDefense[];
+  /** True when an enemy Ascendant can attack `at` next turn. */
+  ascendantThreat(at: Pos): boolean;
+}
+
 /**
  * Value of activating the unit's Domain while standing on `at`. Negative
  * when it should be kept for later (it is once per battle).
  */
-export function scoreDomain(state: GameState, u: Unit, at: Pos): number {
+export function scoreDomain(state: GameState, u: Unit, at: Pos, ctx?: DomainContext): number {
   const R = RULES.domainRadius;
   const allies = state.units.filter((x) => x.faction === u.faction && x.id !== u.id);
   const enemies = state.units.filter((x) => x.faction !== u.faction && !hasTag(x, TAG_NO_RESIST));
   switch (u.domain) {
     case 'bulwark': {
       // Protect the Emperor: enemies cannot walk into the zone, so a Bulwark
-      // that covers every tile next to him stops a Confront for 3 rounds.
-      for (const vip of allies.filter((a) => hasTag(a, TAG_NO_RESIST))) {
-        if (!within(at, vip.pos, R - 1)) continue;
-        const confronter = enemies.find((e) => e.character === 'varek');
-        const near = enemies.filter((e) => within(e.pos, vip.pos, 10)).length;
-        const adjacentEnemy = enemies.some((e) => manhattan(e.pos, vip.pos) === 1);
-        if ((confronter && within(confronter.pos, vip.pos, 12)) || near >= 2) return adjacentEnemy ? 150 : 500;
+      // that covers every tile next to him stops a Confront while it lasts
+      // (it is up for the next two enemy turns). Raise it when the line is
+      // about to break: the confronter could reach a Confront tile next
+      // turn, or in two turns with the tiles not all held. Too early and he
+      // waits it out; once he stands beside the VIP it is too late.
+      if (ctx) {
+        let guardingVip = false;
+        for (const v of ctx.vips) {
+          if (!v.confronter || v.eta === 0) continue;
+          if (v.eta <= 4) guardingVip = true;
+          if (!v.tiles.every((t) => within(t, at, R))) continue;
+          const held = v.tiles.filter((t) => allies.some((a) => a.pos.x === t.x && a.pos.y === t.y)).length;
+          if (v.eta <= 1 || (v.eta <= 2 && held < v.tiles.length)) return 600;
+        }
+        if (guardingVip) return -1; // keep it for the Emperor
+      } else {
+        for (const vip of allies.filter((a) => hasTag(a, TAG_NO_RESIST))) {
+          if (!within(at, vip.pos, R - 1)) continue;
+          const confronter = enemies.find((e) => e.character === 'varek');
+          const near = enemies.filter((e) => within(e.pos, vip.pos, 10)).length;
+          const adjacentEnemy = enemies.some((e) => manhattan(e.pos, vip.pos) === 1);
+          if ((confronter && within(confronter.pos, vip.pos, 12)) || near >= 2) return adjacentEnemy ? 150 : 500;
+        }
       }
       // A crowded fight: shield allies at a chokepoint.
       const covered = allies.filter((a) => within(a.pos, at, R)).length;
@@ -125,6 +150,9 @@ export function scoreDomain(state: GameState, u: Unit, at: Pos): number {
       }
       const close = enemies.filter((e) => within(e.pos, at, R + 2)).length;
       v += close * 10;
+      // An enemy Ascendant can strike him next turn: inside his Sanctuary it
+      // deals 3 less a blow and he heals 5 a round while he runs.
+      if (ctx?.ascendantThreat(at)) v += 200;
       return close > 0 && v >= 30 ? v : -1;
     }
     case 'tempest': {
