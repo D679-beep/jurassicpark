@@ -14,11 +14,13 @@ export type ReduceMotionPref = 'system' | 'on' | 'off';
 export interface Settings {
   speed: Speed;
   reduceMotion: ReduceMotionPref;
+  /** Ask for a second End Turn press while units can still act (default on). */
+  confirmEndTurn: boolean;
 }
 
 export const SETTINGS_KEY = 'lantern.settings.v1';
 export const SPEEDS: readonly Speed[] = ['1x', '2x', 'instant'];
-export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({ speed: '1x', reduceMotion: 'system' });
+export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({ speed: '1x', reduceMotion: 'system', confirmEndTurn: true });
 
 const REDUCE_PREFS: readonly ReduceMotionPref[] = ['system', 'on', 'off'];
 
@@ -31,6 +33,7 @@ export function parseSettings(raw: string | null | undefined): Settings {
     if (v && typeof v === 'object') {
       if (SPEEDS.includes(v.speed as Speed)) out.speed = v.speed as Speed;
       if (REDUCE_PREFS.includes(v.reduceMotion as ReduceMotionPref)) out.reduceMotion = v.reduceMotion as ReduceMotionPref;
+      if (typeof v.confirmEndTurn === 'boolean') out.confirmEndTurn = v.confirmEndTurn;
     }
   } catch {
     // corrupt value: defaults
@@ -217,6 +220,13 @@ export class SettingsStore {
   setReduceMotion(reduceMotion: ReduceMotionPref): void {
     if (reduceMotion === this.current.reduceMotion) return;
     this.current = { ...this.current, reduceMotion };
+    this.persist();
+    this.refresh();
+  }
+
+  setConfirmEndTurn(confirmEndTurn: boolean): void {
+    if (confirmEndTurn === this.current.confirmEndTurn) return;
+    this.current = { ...this.current, confirmEndTurn };
     this.persist();
     this.refresh();
   }

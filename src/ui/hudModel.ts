@@ -2,6 +2,7 @@
 // and tile summaries. No DOM.
 import {
   BELL_ORDER,
+  RULES,
   TERRAIN,
   activeDomainOf,
   bridgeAt,
@@ -64,14 +65,17 @@ export function nextWaveText(state: GameState): string | null {
   return `${w.name}: ${w.unitCount} units, round ${w.round}`;
 }
 
+const rounds = (n: number): string => `${n} round${n === 1 ? '' : 's'}`;
+
+/** Hints for the objective list, the intro card and the help dialog. Delay numbers come from RULES. */
 export const OBJECTIVE_HINTS: Record<ObjectiveId, string> = {
-  killEmperor: 'Bring Varek beside the Emperor and Confront him before Dawn.',
+  killEmperor: 'Bring Varek beside the Emperor, then click him (or press Confront) before Dawn.',
   holdUntilDawn:
     'With the Emperor dead, keep Varek and Kaela alive until Dawn, or wipe out every loyalist once the Third Bell wave is in. Revive a downed hero from an adjacent tile.',
   killElian: 'Only an Ascendant can harm him while sealed. Fails if he escapes.',
   imprisonMira: 'Weaken her to half HP with Kaela, then Capture. Keep Wolves off her.',
-  seizeBellTower: 'End a turn with a rebel in the bell tower and no loyalist there: bells delayed 2 rounds.',
-  burnBridges: 'Burn the centre and east canal bridges: the Second Bell knights come 2 rounds later.',
+  seizeBellTower: `End a turn with a rebel in the bell tower and no loyalist there: bells delayed ${rounds(RULES.bellTowerDelay)}.`,
+  burnBridges: `Burn the centre and east canal bridges: the Second Bell knights come ${rounds(RULES.bridgeDelay)} later.`,
 };
 
 export interface ObjectiveRow {

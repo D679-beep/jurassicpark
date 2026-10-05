@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { applyAction, findUnit } from '../../src/engine';
+import { applyAction, findUnit, type GameState } from '../../src/engine';
 import {
   NO_SELECTION,
+  actorForTarget,
   attackForecast,
   clickTile,
   cycleSelection,
   forecastText,
+  intentAt,
   isReady,
   readyUnitIds,
   refreshSelection,
+  selectNextReadyAfter,
   selectUnit,
 } from '../../src/ui/selection';
-import { END, play, uiGame } from './fixture';
+import { END, addKaelaAndMira, placeUnit, play, uiGame, uiGameWith } from './fixture';
 
 describe('selection state machine', () => {
   it('selects a ready player unit with its moves, targets and commands', () => {
@@ -26,10 +29,17 @@ describe('selection state machine', () => {
     expect(r.selection.commands.map((c) => c.key)).toContain('wait');
   });
 
-  it('does not select enemies or the Emperor', () => {
+  it('does not select enemies', () => {
     const s = uiGame();
     expect(clickTile(s, NO_SELECTION, { x: 7, y: 2 }).selection).toEqual(NO_SELECTION);
-    expect(clickTile(s, NO_SELECTION, { x: 3, y: 1 }).selection).toEqual(NO_SELECTION);
+  });
+
+  it('clicking the Emperor with nothing selected selects Varek and says what to do next', () => {
+    const s = uiGame();
+    const r = clickTile(s, NO_SELECTION, { x: 3, y: 1 });
+    expect(r.action).toBeNull();
+    expect(r.selection.mode === 'unit' && r.selection.unitId).toBe('varek');
+    expect(r.notice).toBe('Varek is selected and can walk up to Emperor Halden. Click Emperor Halden again to Confront.');
   });
 
   it('turns a click on a reachable tile into a move, and keeps the unit selected afterwards', () => {
@@ -106,6 +116,109 @@ describe('selection state machine', () => {
     expect(seen).toEqual(['varek', 'wolf', 'archer', 'varek']);
     const back = cycleSelection(s, selectUnit(s, 'varek'), -1);
     expect(back.mode === 'unit' && back.unitId).toBe('archer');
+  });
+});
+
+describe('click targets: interactions on the map', () => {
+  const beside = (): GameState => applyAction(uiGame(), { kind: 'move', unitId: 'varek', to: { x: 3, y: 2 } }).state;
+
+  it('clicking the Emperor beside Varek performs Confront', () => {
+    const s = beside();
+    const sel = selectUnit(s, 'varek');
+    const r = clickTile(s, sel, { x: 3, y: 1 });
+    expect(r.action).toEqual({ kind: 'interact', unitId: 'varek', interaction: 'confront', targetId: 'halden' });
+    expect(r.followUp).toBeUndefined();
+    expect(intentAt(sel, { x: 3, y: 1 })).toMatchObject({ kind: 'interact' });
+  });
+
+  it('clicking the Emperor from afar walks Varek to the best tile first, then asks for Confront', () => {
+    const s = uiGame();
+    const r = clickTile(s, selectUnit(s, 'varek'), { x: 3, y: 1 });
+    expect(r.action).toEqual({ kind: 'move', unitId: 'varek', to: { x: 3, y: 2 } });
+    expect(r.followUp).toEqual({ unitId: 'varek', interaction: 'confront', targetId: 'halden' });
+    // A plain stand tile is just a move, with no follow-up.
+    const stand = clickTile(s, selectUnit(s, 'varek'), { x: 4, y: 1 });
+    expect(stand.action).toEqual({ kind: 'move', unitId: 'varek', to: { x: 4, y: 1 } });
+    expect(stand.followUp).toBeUndefined();
+    expect(intentAt(selectUnit(s, 'varek'), { x: 4, y: 1 })).toMatchObject({ kind: 'stand' });
+    expect(intentAt(selectUnit(s, 'varek'), { x: 6, y: 3 })).toEqual({ kind: 'move' });
+  });
+
+  it('clicking the Emperor with another unit selected hands the selection to Varek', () => {
+    const s = uiGame();
+    const r = clickTile(s, selectUnit(s, 'wolf'), { x: 3, y: 1 });
+    expect(r.action).toBeNull();
+    expect(r.selection.mode === 'unit' && r.selection.unitId).toBe('varek');
+    expect(r.notice).toContain('Varek is selected');
+  });
+
+  it('with nobody able to Confront, clicking the Emperor says why and keeps the selection', () => {
+    // Varek has acted: nobody can do it this turn.
+    const s = play(uiGame(), { kind: 'wait', unitId: 'varek' }).state;
+    const sel = selectUnit(s, 'wolf');
+    const r = clickTile(s, sel, { x: 3, y: 1 });
+    expect(r.action).toBeNull();
+    expect(r.selection).toBe(sel);
+    expect(r.notice).toBe('The Emperor cannot be attacked. Varek is 2 tiles from the Emperor (~1 turn).');
+  });
+
+  it('a bridge tile stays a move while the unit can walk onto it, and becomes the burn target when it cannot', () => {
+    const s = uiGame();
+    // Archer beside the bridge, not yet moved: (3,4) is a legal move.
+    expect(intentAt(selectUnit(s, 'archer'), { x: 3, y: 4 })).toEqual({ kind: 'move' });
+    const start = uiGameWith((d) => placeUnit(d, 'archer', [4, 5]));
+    const moved = applyAction(start, { kind: 'move', unitId: 'archer', to: { x: 3, y: 5 } }).state;
+    const sel = selectUnit(moved, 'archer');
+    expect(intentAt(sel, { x: 3, y: 4 })).toMatchObject({ kind: 'interact' });
+    expect(clickTile(moved, sel, { x: 3, y: 4 }).action).toEqual({ kind: 'interact', unitId: 'archer', interaction: 'burnBridge', targetId: 'bridgeMid' });
+  });
+
+  it('when a tile offers both Capture and an attack, the interaction wins and Shift attacks instead', () => {
+    const s = uiGameWith((d) => addKaelaAndMira(d, [6, 5], [7, 5]));
+    const sel = selectUnit(s, 'kaela');
+    expect(sel.mode === 'unit' && sel.targets.map((t) => t.id)).toContain('mira');
+    expect(clickTile(s, sel, { x: 7, y: 5 }).action).toMatchObject({ kind: 'interact', interaction: 'capture' });
+    expect(clickTile(s, sel, { x: 7, y: 5 }, { preferAttack: true }).action).toEqual({ kind: 'attack', unitId: 'kaela', targetId: 'mira' });
+    expect(intentAt(sel, { x: 7, y: 5 })).toMatchObject({ kind: 'interact', alsoAttack: { id: 'mira' } });
+    expect(intentAt(sel, { x: 7, y: 5 }, true)).toMatchObject({ kind: 'attack', alsoInteract: { id: 'mira' } });
+  });
+
+  it('explains a click on an enemy the selected unit cannot hit, and keeps the unit selected', () => {
+    const s = uiGameWith((d) => placeUnit(d, 'guard', [8, 5]));
+    const sel = selectUnit(s, 'wolf');
+    const r = clickTile(s, sel, { x: 8, y: 5 });
+    expect(r.action).toBeNull();
+    expect(r.selection).toBe(sel);
+    expect(r.notice).toBe('Palace Guard is out of range. Move Ashen Wolf closer first, then attack.');
+  });
+
+  it('says why a unit with nothing left to do cannot be selected', () => {
+    const s = play(uiGame(), { kind: 'wait', unitId: 'wolf' }).state;
+    const r = clickTile(s, selectUnit(s, 'varek'), { x: 6, y: 2 });
+    expect(r.selection).toEqual(NO_SELECTION);
+    expect(r.notice).toBe('Ashen Wolf has nothing left to do this turn.');
+  });
+});
+
+describe('selectNextReadyAfter', () => {
+  it('hands the selection to the next ready unit in state order, wrapping, or to nobody', () => {
+    const s = uiGame(); // state order: varek, wolf, archer, ...
+    const afterWolf = play(s, { kind: 'wait', unitId: 'wolf' }).state;
+    const next = selectNextReadyAfter(afterWolf, 'wolf');
+    expect(next.mode === 'unit' && next.unitId).toBe('archer');
+    const afterArcher = play(afterWolf, { kind: 'wait', unitId: 'archer' }).state;
+    const wrapped = selectNextReadyAfter(afterArcher, 'archer');
+    expect(wrapped.mode === 'unit' && wrapped.unitId).toBe('varek');
+    const allDone = play(afterArcher, { kind: 'wait', unitId: 'varek' }).state;
+    expect(selectNextReadyAfter(allDone, 'varek')).toEqual(NO_SELECTION);
+  });
+});
+
+describe('actorForTarget', () => {
+  it('prefers a unit that can act on the target right now over one that must walk', () => {
+    const s = uiGameWith((d) => addKaelaAndMira(d, [6, 5], [7, 5]));
+    expect(actorForTarget(s, 'mira')).toMatchObject({ unitId: 'kaela' });
+    expect(actorForTarget(s, 'guard')).toBeNull();
   });
 });
 
